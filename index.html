@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Delad Mapp Online · Filhantering i realtid</title>
-    <link rel="icon" type="image/png" href="favicon.png">
+    <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2360a5fa'%3E%3Cpath d='M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z'/%3E%3C/svg%3E">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
@@ -466,7 +466,7 @@
     <div class="header">
         <div class="header-left">
             <h1><i class="fas fa-folder-open"></i> Delad Mapp Online</h1>
-            <p>Realtidssynkning</p>
+            <p>Originalnamn bevaras · Rätt ikoner · Realtidssynkning</p>
         </div>
         <div class="header-right">
             <div class="online-indicator">
@@ -574,7 +574,7 @@
     };
     firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
-    window.database = databse;
+    window.database = database;
 
     // ==================== CLOUDINARY-KONFIGURATION ====================
     const CLOUD_NAME = "dc1zqri3o";
@@ -1150,5 +1150,6 @@
     // Starta laddning av filer (standardmappen "general" - Allmänt)
     loadFiles();
 </script>
+		<script src="tools.js"></script>
 </body>
 </html>
