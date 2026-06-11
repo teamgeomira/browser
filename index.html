@@ -574,6 +574,7 @@
     };
     firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
+    window.database = databse;
 
     // ==================== CLOUDINARY-KONFIGURATION ====================
     const CLOUD_NAME = "dc1zqri3o";
