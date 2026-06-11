@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Delad Mapp Online · Filhantering i realtid</title>
-    <!-- Favicon (enkel mapp-ikon) -->
+    <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2360a5fa'%3E%3Cpath d='M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z'/%3E%3C/svg%3E">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
@@ -466,7 +466,7 @@
     <div class="header">
         <div class="header-left">
             <h1><i class="fas fa-folder-open"></i> Delad Mapp Online</h1>
-            <p>OFilhantering i realtid</p>
+            <p>Realtidssynkning</p>
         </div>
         <div class="header-right">
             <div class="online-indicator">
@@ -483,7 +483,7 @@
         <div class="sidebar">
             <h3><i class="fas fa-folder-tree"></i> Mappar 
                 <button id="newFolderBtn" class="btn btn-sm btn-secondary" style="padding: 4px 10px;">
-                    <i class="fas fa-plus"></i> Ny mapp
+                    <i class="fas fa-plus"></i> Ny
                 </button>
             </h3>
             <ul class="folder-list" id="folderList"></ul>
@@ -581,7 +581,9 @@
     const SHARED_FOLDER = "carpeta_compartida";
 
     // ==================== GLOBALA VARIABLER ====================
-    let currentFolder = 'allmant';
+    // OBS! Mappnycklar i databasen är på spanska (general, documentos, imagenes, videos, otros)
+    // för att befintliga filer ska fungera. Vi visar dem på svenska i gränssnittet.
+    let currentFolder = 'general';   // Standard: general (Allmänt)
     let allFiles = [];
     let selectedFiles = new Set();
     let currentView = 'grid';
@@ -590,8 +592,18 @@
     let contextFileId = null;
     let onlineUsersCount = 1;
     let userPresenceRef = null;
-    let foldersList = ['allmant', 'dokument', 'bilder', 'videor', 'ovrigt'];
-    let customFolders = new Set();
+    
+    // Fördefinierade mappar (samma nycklar som i ursprungliga databasen)
+    const predefinedFolderKeys = ['general', 'documentos', 'imagenes', 'videos', 'otros'];
+    // Visningsnamn på svenska
+    const folderDisplayNames = {
+        'general': 'Allmänt',
+        'documentos': 'Dokument',
+        'imagenes': 'Bilder',
+        'videos': 'Videor',
+        'otros': 'Övrigt'
+    };
+    let customFolders = new Set(); // Anpassade mappar (nycklar)
 
     // ==================== DOM-ELEMENT ====================
     const folderList = document.getElementById('folderList');
@@ -681,7 +693,7 @@
     }
 
     // ==================== MAPPHANTERING ====================
-    function loadFoldersFromFirebase() {
+    function loadCustomFolders() {
         database.ref('custom_folders').once('value', (snapshot) => {
             const data = snapshot.val();
             customFolders.clear();
@@ -709,7 +721,7 @@
     }
 
     function deleteCustomFolderFromFirebase(folderKey) {
-        if (foldersList.includes(folderKey)) {
+        if (predefinedFolderKeys.includes(folderKey)) {
             showToast('Standardmapp kan inte raderas', true);
             return;
         }
@@ -727,7 +739,7 @@
             database.ref(`shared_files/${folderKey}`).remove();
             customFolders.delete(folderKey);
             if (currentFolder === folderKey) {
-                switchFolder('allmant');
+                switchFolder('general');
             }
             renderFolderList();
             showToast(`Mapp "${folderKey}" raderad`);
@@ -735,20 +747,20 @@
     }
 
     function renderFolderList() {
-        let allFolders = [...foldersList, ...Array.from(customFolders)];
+        let allFolders = [...predefinedFolderKeys, ...Array.from(customFolders)];
         allFolders.sort();
         folderList.innerHTML = allFolders.map(folder => {
-            let displayName = folder.charAt(0).toUpperCase() + folder.slice(1);
-            if (folder === 'allmant') displayName = 'Allmänt';
-            else if (folder === 'dokument') displayName = 'Dokument';
-            else if (folder === 'bilder') displayName = 'Bilder';
-            else if (folder === 'videor') displayName = 'Videor';
-            else if (folder === 'ovrigt') displayName = 'Övrigt';
+            const displayName = folderDisplayNames[folder] || folder.charAt(0).toUpperCase() + folder.slice(1);
             const isActive = currentFolder === folder;
-            const isDeletable = !foldersList.includes(folder);
+            const isDeletable = !predefinedFolderKeys.includes(folder);
+            let iconClass = 'fa-folder';
+            if (folder === 'imagenes') iconClass = 'fa-image';
+            else if (folder === 'videos') iconClass = 'fa-video';
+            else if (folder === 'documentos') iconClass = 'fa-file-alt';
+            else if (folder === 'otros') iconClass = 'fa-archive';
             return `
                 <li class="folder-item ${isActive ? 'active' : ''}" data-folder="${folder}">
-                    <i class="fas ${folder === 'bilder' ? 'fa-image' : folder === 'videor' ? 'fa-video' : folder === 'dokument' ? 'fa-file-alt' : folder === 'ovrigt' ? 'fa-archive' : 'fa-folder'}"></i>
+                    <i class="fas ${iconClass}"></i>
                     <span class="folder-name">${escapeHtml(displayName)}</span>
                     ${isDeletable ? `<button class="delete-folder-btn" data-folder-delete="${folder}" title="Radera mapp"><i class="fas fa-trash"></i></button>` : ''}
                 </li>
@@ -774,12 +786,7 @@
 
     function switchFolder(folder) {
         currentFolder = folder;
-        let displayName = folder.charAt(0).toUpperCase() + folder.slice(1);
-        if (folder === 'allmant') displayName = 'Allmänt';
-        else if (folder === 'dokument') displayName = 'Dokument';
-        else if (folder === 'bilder') displayName = 'Bilder';
-        else if (folder === 'videor') displayName = 'Videor';
-        else if (folder === 'ovrigt') displayName = 'Övrigt';
+        const displayName = folderDisplayNames[folder] || folder.charAt(0).toUpperCase() + folder.slice(1);
         currentFolderTitle.innerHTML = `📁 ${displayName}`;
         document.querySelectorAll('.folder-item').forEach(item => {
             item.classList.toggle('active', item.dataset.folder === folder);
@@ -1053,7 +1060,7 @@
 
     // ==================== HÄNDELSER OCH INITIERING ====================
     setupPresence();
-    loadFoldersFromFirebase();
+    loadCustomFolders();
 
     document.querySelectorAll('.view-toggle button').forEach(btn => {
         btn.addEventListener('click', () => setView(btn.dataset.view));
@@ -1063,7 +1070,7 @@
         const folderName = prompt('Namn på den nya mappen:');
         if (folderName && folderName.trim()) {
             const folderKey = folderName.trim().toLowerCase().replace(/\s+/g, '_');
-            if (foldersList.includes(folderKey) || customFolders.has(folderKey)) {
+            if (predefinedFolderKeys.includes(folderKey) || customFolders.has(folderKey)) {
                 showToast('En mapp med det namnet finns redan', true);
                 return;
             }
@@ -1139,7 +1146,7 @@
     uploadBtn.addEventListener('click', () => fileInput.click());
     deleteSelectedBtn.addEventListener('click', deleteSelectedFiles);
 
-    // Starta laddning av filer
+    // Starta laddning av filer (standardmappen "general" - Allmänt)
     loadFiles();
 </script>
 </body>
