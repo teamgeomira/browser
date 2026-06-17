@@ -4,461 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Delad Mapp Online · Filhantering i realtid</title>
-    <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2360a5fa'%3E%3Cpath d='M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z'/%3E%3C/svg%3E">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Inter', sans-serif;
-            background: #0f172a;
-            color: #e2e8f0;
-            min-height: 100vh;
-            padding: 20px;
-        }
-        .app-container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        .header {
-            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-            border-radius: 20px;
-            padding: 20px 30px;
-            margin-bottom: 25px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 15px;
-            border: 1px solid #475569;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-        }
-        .header-left h1 {
-            font-size: 1.7rem;
-            background: linear-gradient(135deg, #60a5fa, #a78bfa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        .header-left p {
-            color: #94a3b8;
-            font-size: 0.85rem;
-            margin-top: 4px;
-        }
-        .header-right {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        .online-indicator {
-            background: #064e3b;
-            padding: 6px 14px;
-            border-radius: 30px;
-            font-size: 0.8rem;
-            color: #6ee7b7;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .online-dot {
-            width: 8px;
-            height: 8px;
-            background: #10b981;
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        .user-count {
-            background: #1e293b;
-            padding: 6px 14px;
-            border-radius: 30px;
-            font-size: 0.8rem;
-            border: 1px solid #475569;
-        }
-        .main-content {
-            display: grid;
-            grid-template-columns: 280px 1fr;
-            gap: 25px;
-        }
-        .sidebar {
-            background: #1e293b;
-            border-radius: 24px;
-            padding: 20px;
-            border: 1px solid #475569;
-            height: fit-content;
-            position: sticky;
-            top: 20px;
-        }
-        .sidebar h3 {
-            color: #94a3b8;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .folder-list {
-            list-style: none;
-            max-height: 65vh;
-            overflow-y: auto;
-        }
-        .folder-item {
-            padding: 10px 12px;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-bottom: 4px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #cbd5e1;
-        }
-        .folder-item:hover {
-            background: #334155;
-        }
-        .folder-item.active {
-            background: #3b82f6;
-            color: white;
-        }
-        .folder-item i {
-            width: 22px;
-        }
-        .folder-name {
-            flex: 1;
-            word-break: break-word;
-        }
-        .delete-folder-btn {
-            visibility: hidden;
-            background: none;
-            border: none;
-            color: #fca5a5;
-            cursor: pointer;
-            font-size: 0.8rem;
-            padding: 4px;
-            border-radius: 6px;
-        }
-        .folder-item:hover .delete-folder-btn {
-            visibility: visible;
-        }
-        .delete-folder-btn:hover {
-            background: #7f1d1d;
-        }
-        .workspace {
-            background: #1e293b;
-            border-radius: 24px;
-            padding: 25px;
-            border: 1px solid #475569;
-        }
-        .workspace-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-        .workspace-title {
-            font-size: 1.3rem;
-            font-weight: 600;
-        }
-        .workspace-actions {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .dropzone {
-            border: 2px dashed #475569;
-            border-radius: 16px;
-            padding: 40px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-            background: #0f172a;
-            margin-bottom: 25px;
-        }
-        .dropzone:hover,
-        .dropzone.drag-over {
-            border-color: #3b82f6;
-            background: #1e293b;
-        }
-        .dropzone i {
-            font-size: 3rem;
-            color: #3b82f6;
-            margin-bottom: 10px;
-        }
-        .dropzone p {
-            color: #94a3b8;
-        }
-        .toolbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-        .view-toggle {
-            display: flex;
-            background: #0f172a;
-            border-radius: 10px;
-            padding: 3px;
-        }
-        .view-toggle button {
-            padding: 6px 14px;
-            border: none;
-            background: transparent;
-            cursor: pointer;
-            border-radius: 8px;
-            color: #94a3b8;
-            transition: all 0.2s;
-            font-family: 'Inter', sans-serif;
-            font-size: 0.85rem;
-        }
-        .view-toggle button.active {
-            background: #3b82f6;
-            color: white;
-        }
-        .search-box {
-            display: flex;
-            align-items: center;
-            background: #0f172a;
-            border-radius: 10px;
-            padding: 6px 12px;
-            gap: 8px;
-        }
-        .search-box input {
-            background: transparent;
-            border: none;
-            color: white;
-            outline: none;
-            font-family: 'Inter', sans-serif;
-            width: 180px;
-        }
-        .btn {
-            padding: 8px 18px;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 0.85rem;
-            transition: all 0.2s;
-            font-family: 'Inter', sans-serif;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .btn-primary {
-            background: #3b82f6;
-            color: white;
-        }
-        .btn-primary:hover {
-            background: #2563eb;
-            transform: translateY(-1px);
-        }
-        .btn-secondary {
-            background: #334155;
-            color: #e2e8f0;
-        }
-        .btn-secondary:hover {
-            background: #475569;
-        }
-        .btn-danger {
-            background: #7f1d1d;
-            color: #fca5a5;
-        }
-        .btn-danger:hover {
-            background: #991b1b;
-        }
-        .btn-sm {
-            padding: 5px 12px;
-            font-size: 0.75rem;
-        }
-        .file-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-            gap: 16px;
-            max-height: 55vh;
-            overflow-y: auto;
-            padding: 4px;
-        }
-        .file-grid.list-view {
-            grid-template-columns: 1fr;
-        }
-        .file-card {
-            background: #0f172a;
-            border-radius: 16px;
-            padding: 18px;
-            border: 1px solid #334155;
-            transition: all 0.2s;
-            cursor: pointer;
-            position: relative;
-        }
-        .file-card:hover {
-            border-color: #3b82f6;
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(59, 130, 246, 0.2);
-        }
-        .file-card.selected {
-            border-color: #3b82f6;
-            background: #1e3a5f;
-        }
-        .file-card .checkbox {
-            position: absolute;
-            top: 12px;
-            right: 12px;
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-            accent-color: #3b82f6;
-        }
-        .list-view .file-card {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 12px 20px;
-        }
-        .file-icon {
-            font-size: 2.5rem;
-            text-align: center;
-            margin-bottom: 10px;
-        }
-        .list-view .file-icon {
-            font-size: 2rem;
-            margin-bottom: 0;
-            min-width: 55px;
-        }
-        .file-info {
-            flex: 1;
-        }
-        .file-name {
-            font-weight: 500;
-            word-break: break-all;
-            margin-bottom: 5px;
-        }
-        .file-meta {
-            font-size: 0.7rem;
-            color: #94a3b8;
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .file-actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 10px;
-        }
-        .list-view .file-actions {
-            margin-top: 0;
-        }
-        .progress-bar {
-            background: #334155;
-            border-radius: 20px;
-            height: 6px;
-            margin: 15px 0;
-            overflow: hidden;
-            display: none;
-        }
-        .progress-fill {
-            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
-            height: 100%;
-            transition: width 0.3s ease;
-        }
-        .toast {
-            position: fixed;
-            bottom: 25px;
-            right: 25px;
-            background: #1e293b;
-            padding: 12px 20px;
-            border-radius: 12px;
-            font-weight: 500;
-            opacity: 0;
-            transform: translateX(100px);
-            transition: all 0.3s;
-            pointer-events: none;
-            z-index: 1000;
-            border-left: 4px solid #3b82f6;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-        }
-        .toast.show {
-            opacity: 1;
-            transform: translateX(0);
-        }
-        .toast.error {
-            border-left-color: #dc2626;
-            background: #2d1414;
-        }
-        .empty-state {
-            text-align: center;
-            padding: 50px 20px;
-            color: #64748b;
-            grid-column: 1/-1;
-        }
-        .empty-state i {
-            font-size: 3.5rem;
-            margin-bottom: 15px;
-            opacity: 0.5;
-        }
-        .context-menu {
-            position: fixed;
-            background: #1e293b;
-            border: 1px solid #475569;
-            border-radius: 12px;
-            padding: 8px;
-            z-index: 999;
-            display: none;
-            min-width: 180px;
-        }
-        .context-menu-item {
-            padding: 8px 14px;
-            cursor: pointer;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            transition: background 0.2s;
-            font-size: 0.85rem;
-        }
-        .context-menu-item:hover {
-            background: #334155;
-        }
-        .context-menu-item.danger {
-            color: #fca5a5;
-        }
-        .context-menu-item.danger:hover {
-            background: #450a0a;
-        }
-        @media (max-width: 900px) {
-            .main-content {
-                grid-template-columns: 1fr;
-            }
-            .sidebar {
-                position: static;
-                margin-bottom: 20px;
-            }
-        }
-        ::-webkit-scrollbar {
-            width: 5px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #0f172a;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #3b82f6;
-            border-radius: 10px;
-        }
+        *{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;padding:20px}.app-container{max-width:1400px;margin:0 auto}.header{background:linear-gradient(135deg,#1e293b 0%,#334155 100%);border-radius:20px;padding:20px 30px;margin-bottom:25px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:15px;border:1px solid #475569;box-shadow:0 8px 20px rgba(0,0,0,0.3)}.header-left h1{font-size:1.7rem;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}.header-left p{color:#94a3b8;font-size:.85rem;margin-top:4px}.header-right{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.online-indicator{background:#064e3b;padding:6px 14px;border-radius:30px;font-size:.8rem;color:#6ee7b7;display:flex;align-items:center;gap:8px}.online-dot{width:8px;height:8px;background:#10b981;border-radius:50%;animation:pulse 2s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}.user-count{background:#1e293b;padding:6px 14px;border-radius:30px;font-size:.8rem;border:1px solid #475569}.main-content{display:grid;grid-template-columns:280px 1fr;gap:25px}.sidebar{background:#1e293b;border-radius:24px;padding:20px;border:1px solid #475569;height:fit-content;position:sticky;top:20px}.sidebar h3{color:#94a3b8;font-size:.75rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:15px;display:flex;justify-content:space-between;align-items:center}.folder-list{list-style:none;max-height:65vh;overflow-y:auto}.folder-item{padding:10px 12px;border-radius:12px;cursor:pointer;transition:all .2s;margin-bottom:4px;display:flex;align-items:center;gap:10px;color:#cbd5e1;border-left:3px solid transparent}.folder-item:hover{background:#334155}.folder-item.active{background:#3b82f6;color:#fff}.folder-item i{width:22px;font-size:1.1rem}.folder-name{flex:1;word-break:break-word}.folder-actions{display:flex;gap:4px;visibility:hidden}.folder-item:hover .folder-actions{visibility:visible}.folder-actions button{background:0 0;border:none;color:#94a3b8;cursor:pointer;padding:4px 6px;border-radius:6px;font-size:.75rem;transition:.2s}.folder-actions button:hover{background:#334155;color:#f1f5f9}.folder-actions .edit-folder-btn:hover{color:#60a5fa}.folder-actions .delete-folder-btn:hover{background:#7f1d1d;color:#fca5a5}.workspace{background:#1e293b;border-radius:24px;padding:25px;border:1px solid #475569}.workspace-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:15px}.workspace-title{font-size:1.3rem;font-weight:600;display:flex;align-items:center;gap:10px}.workspace-title i{font-size:1.5rem}.workspace-actions{display:flex;gap:10px;flex-wrap:wrap}.dropzone{border:2px dashed #475569;border-radius:16px;padding:40px;text-align:center;cursor:pointer;transition:all .3s;background:#0f172a;margin-bottom:25px}.dropzone:hover,.dropzone.drag-over{border-color:#3b82f6;background:#1e293b}.dropzone i{font-size:3rem;color:#3b82f6;margin-bottom:10px}.dropzone p{color:#94a3b8}.toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:15px}.view-toggle{display:flex;background:#0f172a;border-radius:10px;padding:3px}.view-toggle button{padding:6px 14px;border:none;background:0 0;cursor:pointer;border-radius:8px;color:#94a3b8;transition:all .2s;font-family:'Inter',sans-serif;font-size:.85rem}.view-toggle button.active{background:#3b82f6;color:#fff}.search-box{display:flex;align-items:center;background:#0f172a;border-radius:10px;padding:6px 12px;gap:8px}.search-box input{background:0 0;border:none;color:#fff;outline:0;font-family:'Inter',sans-serif;width:180px}.btn{padding:8px 18px;border:none;border-radius:12px;cursor:pointer;font-weight:600;font-size:.85rem;transition:all .2s;font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:8px}.btn-primary{background:#3b82f6;color:#fff}.btn-primary:hover{background:#2563eb;transform:translateY(-1px)}.btn-secondary{background:#334155;color:#e2e8f0}.btn-secondary:hover{background:#475569}.btn-danger{background:#7f1d1d;color:#fca5a5}.btn-danger:hover{background:#991b1b}.btn-sm{padding:5px 12px;font-size:.75rem}.btn-success{background:#065f46;color:#6ee7b7}.btn-success:hover{background:#047857}.file-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px;max-height:55vh;overflow-y:auto;padding:4px}.file-grid.list-view{grid-template-columns:1fr}.file-card{background:#0f172a;border-radius:16px;padding:18px;border:1px solid #334155;transition:all .2s;cursor:pointer;position:relative}.file-card:hover{border-color:#3b82f6;transform:translateY(-2px);box-shadow:0 10px 20px rgba(59,130,246,0.2)}.file-card.selected{border-color:#3b82f6;background:#1e3a5f}.file-card .checkbox{position:absolute;top:12px;right:12px;width:18px;height:18px;cursor:pointer;accent-color:#3b82f6}.list-view .file-card{display:flex;align-items:center;gap:15px;padding:12px 20px}.file-icon{font-size:2.5rem;text-align:center;margin-bottom:10px}.list-view .file-icon{font-size:2rem;margin-bottom:0;min-width:55px}.file-info{flex:1}.file-name{font-weight:500;word-break:break-all;margin-bottom:5px}.file-meta{font-size:.7rem;color:#94a3b8;display:flex;gap:10px;flex-wrap:wrap}.file-actions{display:flex;gap:8px;margin-top:10px}.list-view .file-actions{margin-top:0}.progress-bar{background:#334155;border-radius:20px;height:6px;margin:15px 0;overflow:hidden;display:none}.progress-fill{background:linear-gradient(90deg,#3b82f6,#8b5cf6);height:100%;transition:width .3s ease}.toast{position:fixed;bottom:25px;right:25px;background:#1e293b;padding:12px 20px;border-radius:12px;font-weight:500;opacity:0;transform:translateX(100px);transition:all .3s;pointer-events:none;z-index:1000;border-left:4px solid #3b82f6;box-shadow:0 10px 25px rgba(0,0,0,0.3)}.toast.show{opacity:1;transform:translateX(0)}.toast.error{border-left-color:#dc2626;background:#2d1414}.empty-state{text-align:center;padding:50px 20px;color:#64748b;grid-column:1/-1}.empty-state i{font-size:3.5rem;margin-bottom:15px;opacity:.5}.context-menu{position:fixed;background:#1e293b;border:1px solid #475569;border-radius:12px;padding:8px;z-index:999;display:none;min-width:180px}.context-menu-item{padding:8px 14px;cursor:pointer;border-radius:8px;display:flex;align-items:center;gap:10px;transition:background .2s;font-size:.85rem}.context-menu-item:hover{background:#334155}.context-menu-item.danger{color:#fca5a5}.context-menu-item.danger:hover{background:#450a0a}@media(max-width:900px){.main-content{grid-template-columns:1fr}.sidebar{position:static;margin-bottom:20px}}::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#0f172a}::-webkit-scrollbar-thumb{background:#3b82f6;border-radius:10px}.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.75);z-index:2000;justify-content:center;align-items:center;backdrop-filter:blur(4px);padding:20px}.modal-overlay.active{display:flex}.modal-box{background:#1e293b;border-radius:28px;padding:32px 36px;max-width:520px;width:100%;border:1px solid #475569;box-shadow:0 30px 60px rgba(0,0,0,0.6);animation:modalFadeIn .25s ease}@keyframes modalFadeIn{from{opacity:0;transform:scale(.96) translateY(20px)}to{opacity:1;transform:scale(1) translateY(0)}}.modal-box h3{font-size:1.4rem;margin-bottom:8px;color:#f1f5f9}.modal-box .modal-sub{color:#94a3b8;font-size:.9rem;margin-bottom:22px}.modal-box label{display:block;font-weight:500;font-size:.85rem;color:#cbd5e1;margin-bottom:5px;margin-top:16px}.modal-box label:first-of-type{margin-top:0}.modal-box input[type=text]{width:100%;padding:12px 16px;border-radius:14px;border:1px solid #334155;background:#0f172a;color:#f1f5f9;font-size:1rem;font-family:'Inter',sans-serif;outline:0;transition:border .2s}.modal-box input[type=text]:focus{border-color:#3b82f6}.modal-box input[type=color]{width:100%;height:48px;padding:4px;border-radius:14px;border:1px solid #334155;background:#0f172a;cursor:pointer;outline:0}.modal-box input[type=color]::-webkit-color-swatch-wrapper{padding:4px}.modal-box input[type=color]::-webkit-color-swatch{border:none;border-radius:10px}.icon-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin-top:6px}.icon-grid .icon-option{background:#0f172a;border:2px solid transparent;border-radius:12px;padding:10px 0;text-align:center;cursor:pointer;transition:all .2s;font-size:1.3rem;color:#94a3b8}.icon-grid .icon-option:hover{background:#334155;color:#f1f5f9}.icon-grid .icon-option.active{border-color:#3b82f6;background:#1e3a5f;color:#60a5fa}.modal-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:24px;padding-top:16px;border-top:1px solid #334155}.modal-actions .btn{padding:10px 26px;font-size:.9rem}.folder-preview{display:flex;align-items:center;gap:14px;background:#0f172a;border-radius:14px;padding:14px 18px;margin-top:14px;border:1px solid #334155}.folder-preview .preview-icon{font-size:2rem;transition:color .2s}.folder-preview .preview-name{font-weight:500;font-size:1rem;color:#f1f5f9}.folder-preview .preview-color-dot{width:20px;height:20px;border-radius:50%;border:2px solid #475569;flex-shrink:0}@media(max-width:480px){.modal-box{padding:24px 18px}.icon-grid{grid-template-columns:repeat(6,1fr)}}
     </style>
 </head>
 <body>
@@ -466,690 +18,807 @@
     <div class="header">
         <div class="header-left">
             <h1><i class="fas fa-folder-open"></i> Delad Mapp Online</h1>
-            <p>Originalnamn bevaras · Rätt ikoner · Realtidssynkning</p>
+            <p>Filhantering i realtid · Alla format inkl. komprimerade filer</p>
         </div>
         <div class="header-right">
-            <div class="online-indicator">
-                <span class="online-dot"></span>
-                Uppkopplad - Synkad
-            </div>
-            <div class="user-count" id="userCount">
-                <i class="fas fa-users"></i> <span id="onlineUsers">1</span> ansluten
-            </div>
+            <div class="online-indicator"><span class="online-dot"></span>Uppkopplad – Synkad</div>
+            <div class="user-count" id="userCount"><i class="fas fa-users"></i> <span id="onlineUsers">1</span> ansluten</div>
         </div>
     </div>
-
     <div class="main-content">
         <div class="sidebar">
-            <h3><i class="fas fa-folder-tree"></i> Mappar 
-                <button id="newFolderBtn" class="btn btn-sm btn-secondary" style="padding: 4px 10px;">
-                    <i class="fas fa-plus"></i> Ny
-                </button>
+            <h3><i class="fas fa-folder-tree"></i> Mappar
+                <button id="newFolderBtn" class="btn btn-sm btn-secondary" style="padding:4px 10px;"><i class="fas fa-plus"></i> Ny mapp</button>
             </h3>
             <ul class="folder-list" id="folderList"></ul>
         </div>
-
         <div class="workspace">
             <div class="workspace-header">
-                <h2 class="workspace-title" id="currentFolderTitle">📁 Allmänt</h2>
+                <h2 class="workspace-title" id="currentFolderTitle"><i class="fas fa-folder" style="color:#60a5fa;"></i> Allmänt</h2>
                 <div class="workspace-actions">
-                    <button class="btn btn-primary" id="uploadBtn">
-                        <i class="fas fa-upload"></i> Ladda upp filer
-                    </button>
-                    <button class="btn btn-danger" id="deleteSelectedBtn" style="display:none;">
-                        <i class="fas fa-trash"></i> Ta bort markerade
-                    </button>
+                    <button class="btn btn-primary" id="uploadBtn"><i class="fas fa-upload"></i> Ladda upp filer</button>
+                    <button class="btn btn-danger" id="deleteSelectedBtn" style="display:none;"><i class="fas fa-trash"></i> Ta bort markerade</button>
                 </div>
             </div>
-
             <div class="dropzone" id="dropzone">
                 <i class="fas fa-cloud-upload-alt"></i>
                 <p>Dra och släpp filer här eller klicka för att välja</p>
-                <small style="color: #64748b;">Alla format stöds · Originalnamn bevaras</small>
+                <small style="color:#64748b;">Alla format stöds · Även komprimerade filer</small>
             </div>
             <input type="file" id="fileInput" multiple accept="*/*" style="display:none">
-
-            <div class="progress-bar" id="progressBar">
-                <div class="progress-fill" id="progressFill"></div>
-            </div>
-
+            <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
             <div class="toolbar">
                 <div class="view-toggle">
                     <button data-view="grid" class="active"><i class="fas fa-th-large"></i> Rutnät</button>
                     <button data-view="list"><i class="fas fa-list"></i> Lista</button>
                 </div>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <div class="search-box">
-                        <i class="fas fa-search"></i>
-                        <input type="text" id="searchInput" placeholder="Sök filer...">
-                    </div>
-                    <div class="sort-dropdown">
-                        <button class="btn btn-secondary btn-sm" id="sortBtn">
-                            <i class="fas fa-sort-amount-down"></i> Sortera
-                        </button>
-                        <div class="sort-menu" id="sortMenu" style="display:none; position:absolute; background:#1e293b; border:1px solid #475569; border-radius:12px; padding:8px; min-width:150px; z-index:200;">
-                            <div class="sort-menu-item" data-sort="name-asc" style="padding:6px 12px; cursor:pointer;">Namn A-Ö</div>
-                            <div class="sort-menu-item" data-sort="name-desc" style="padding:6px 12px; cursor:pointer;">Namn Ö-A</div>
-                            <div class="sort-menu-item" data-sort="date-desc" style="padding:6px 12px; cursor:pointer;">Senast först</div>
-                            <div class="sort-menu-item" data-sort="date-asc" style="padding:6px 12px; cursor:pointer;">Äldst först</div>
-                            <div class="sort-menu-item" data-sort="size-desc" style="padding:6px 12px; cursor:pointer;">Störst först</div>
-                            <div class="sort-menu-item" data-sort="size-asc" style="padding:6px 12px; cursor:pointer;">Minst först</div>
+                <div style="display:flex;gap:10px;align-items:center;">
+                    <div class="search-box"><i class="fas fa-search"></i><input type="text" id="searchInput" placeholder="Sök filer..."></div>
+                    <div class="sort-dropdown" style="position:relative;">
+                        <button class="btn btn-secondary btn-sm" id="sortBtn"><i class="fas fa-sort-amount-down"></i> Sortera</button>
+                        <div class="sort-menu" id="sortMenu" style="display:none;position:absolute;right:0;top:100%;margin-top:6px;background:#1e293b;border:1px solid #475569;border-radius:12px;padding:8px;min-width:160px;z-index:200;">
+                            <div class="sort-menu-item" data-sort="name-asc" style="padding:8px 14px;cursor:pointer;border-radius:8px;">Namn A–Ö</div>
+                            <div class="sort-menu-item" data-sort="name-desc" style="padding:8px 14px;cursor:pointer;border-radius:8px;">Namn Ö–A</div>
+                            <div class="sort-menu-item" data-sort="date-desc" style="padding:8px 14px;cursor:pointer;border-radius:8px;">Senast först</div>
+                            <div class="sort-menu-item" data-sort="date-asc" style="padding:8px 14px;cursor:pointer;border-radius:8px;">Äldst först</div>
+                            <div class="sort-menu-item" data-sort="size-desc" style="padding:8px 14px;cursor:pointer;border-radius:8px;">Störst först</div>
+                            <div class="sort-menu-item" data-sort="size-asc" style="padding:8px 14px;cursor:pointer;border-radius:8px;">Minst först</div>
                         </div>
                     </div>
                 </div>
             </div>
-
             <div class="file-grid" id="fileGrid"></div>
         </div>
     </div>
 </div>
-
 <div class="context-menu" id="contextMenu">
-    <div class="context-menu-item" data-action="download">
-        <i class="fas fa-download"></i> Ladda ner
-    </div>
-    <div class="context-menu-item" data-action="rename">
-        <i class="fas fa-edit"></i> Byt namn
-    </div>
-    <div class="context-menu-item" data-action="copy-link">
-        <i class="fas fa-link"></i> Kopiera länk
-    </div>
-    <div class="context-menu-item danger" data-action="delete">
-        <i class="fas fa-trash"></i> Radera
+    <div class="context-menu-item" data-action="download"><i class="fas fa-download"></i> Ladda ner</div>
+    <div class="context-menu-item" data-action="rename"><i class="fas fa-edit"></i> Byt namn</div>
+    <div class="context-menu-item" data-action="copy-link"><i class="fas fa-link"></i> Kopiera länk</div>
+    <div class="context-menu-item danger" data-action="delete"><i class="fas fa-trash"></i> Radera</div>
+</div>
+<div class="toast" id="toast"></div>
+<div class="modal-overlay" id="folderModal">
+    <div class="modal-box">
+        <h3 id="folderModalTitle">📁 Skapa ny mapp</h3>
+        <p class="modal-sub" id="folderModalSub">Välj namn, ikon och färg för din nya mapp.</p>
+        <label for="folderModalName">Mappnamn</label>
+        <input type="text" id="folderModalName" placeholder="t.ex. Projekt 2026" autofocus>
+        <label>Ikon</label>
+        <div class="icon-grid" id="folderModalIconSelector"></div>
+        <label>Färg</label>
+        <input type="color" id="folderModalColor" value="#60a5fa">
+        <div class="folder-preview">
+            <i class="fas fa-folder preview-icon" id="folderModalPreviewIcon" style="color:#60a5fa;"></i>
+            <span class="preview-name" id="folderModalPreviewName">min-mapp</span>
+            <span class="preview-color-dot" id="folderModalPreviewColor" style="background:#60a5fa;"></span>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" id="folderModalCancel">Avbryt</button>
+            <button class="btn btn-primary" id="folderModalConfirm"><i class="fas fa-plus"></i> Skapa</button>
+        </div>
     </div>
 </div>
-
-<div class="toast" id="toast"></div>
-
 <script>
-    // ==================== FIREBASE-KONFIGURATION ====================
-    const firebaseConfig = {
-        apiKey: "AIzaSyANa6zWkGrYQ7O7M6XT2oYbArsZIcs36M8",
-        authDomain: "trip-a9341.firebaseapp.com",
-        databaseURL: "https://trip-a9341-default-rtdb.firebaseio.com",
-        projectId: "trip-a9341",
-        storageBucket: "trip-a9341.firebasestorage.app",
-        messagingSenderId: "379336201132",
-        appId: "1:379336201132:web:ebeadba357d17635aba009"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const database = firebase.database();
-    window.database = database;
-
-    // ==================== CLOUDINARY-KONFIGURATION ====================
-    const CLOUD_NAME = "dc1zqri3o";
-    const UPLOAD_PRESET = "ncc_nordic";
-    const SHARED_FOLDER = "carpeta_compartida";
-
-    // ==================== GLOBALA VARIABLER ====================
-    // OBS! Mappnycklar i databasen är på spanska (general, documentos, imagenes, videos, otros)
-    // för att befintliga filer ska fungera. Vi visar dem på svenska i gränssnittet.
-    let currentFolder = 'general';   // Standard: general (Allmänt)
-    let allFiles = [];
-    let selectedFiles = new Set();
-    let currentView = 'grid';
-    let currentSort = 'date-desc';
-    let searchQuery = '';
-    let contextFileId = null;
-    let onlineUsersCount = 1;
-    let userPresenceRef = null;
-    
-    // Fördefinierade mappar (samma nycklar som i ursprungliga databasen)
-    const predefinedFolderKeys = ['general', 'documentos', 'imagenes', 'videos', 'otros'];
-    // Visningsnamn på svenska
-    const folderDisplayNames = {
-        'general': 'Allmänt',
-        'documentos': 'Dokument',
-        'imagenes': 'Bilder',
-        'videos': 'Videor',
-        'otros': 'Övrigt'
-    };
-    let customFolders = new Set(); // Anpassade mappar (nycklar)
-
-    // ==================== DOM-ELEMENT ====================
-    const folderList = document.getElementById('folderList');
-    const dropzone = document.getElementById('dropzone');
-    const fileInput = document.getElementById('fileInput');
-    const fileGrid = document.getElementById('fileGrid');
-    const uploadBtn = document.getElementById('uploadBtn');
-    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
-    const progressBar = document.getElementById('progressBar');
-    const progressFill = document.getElementById('progressFill');
-    const contextMenu = document.getElementById('contextMenu');
-    const sortBtn = document.getElementById('sortBtn');
-    const sortMenu = document.getElementById('sortMenu');
-    const searchInput = document.getElementById('searchInput');
-    const toast = document.getElementById('toast');
-    const onlineUsers = document.getElementById('onlineUsers');
-    const currentFolderTitle = document.getElementById('currentFolderTitle');
-
-    // ==================== HJÄLPFUNKTIONER ====================
-    function showToast(msg, isError = false) {
-        toast.textContent = msg;
-        toast.className = 'toast show' + (isError ? ' error' : '');
-        clearTimeout(toast._timeout);
-        toast._timeout = setTimeout(() => {
-            toast.className = 'toast';
-        }, 3000);
-    }
-
-    function formatSize(bytes) {
-        if (!bytes || bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
-    function escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    }
-
-    // ==================== IKONER OCH FÄRGER EFTER FILTYP ====================
-    function getFileIcon(filename) {
-        const ext = filename.split('.').pop().toLowerCase();
-        const icons = {
-            'jpg': 'fa-file-image', 'jpeg': 'fa-file-image', 'png': 'fa-file-image', 'gif': 'fa-file-image',
-            'bmp': 'fa-file-image', 'svg': 'fa-file-image', 'webp': 'fa-file-image', 'ico': 'fa-file-image',
-            'tif': 'fa-file-image', 'tiff': 'fa-file-image', 'raw': 'fa-file-image', 'psd': 'fa-file-image',
-            'ai': 'fa-file-image', 'eps': 'fa-file-image', 'heic': 'fa-file-image', 'cr2': 'fa-file-image',
-            'pdf': 'fa-file-pdf', 'doc': 'fa-file-word', 'docx': 'fa-file-word', 'odt': 'fa-file-word',
-            'xls': 'fa-file-excel', 'xlsx': 'fa-file-excel', 'csv': 'fa-file-csv',
-            'ppt': 'fa-file-powerpoint', 'pptx': 'fa-file-powerpoint', 'odp': 'fa-file-powerpoint',
-            'txt': 'fa-file-alt', 'rtf': 'fa-file-alt', 'md': 'fa-file-alt',
-            'mp4': 'fa-file-video', 'avi': 'fa-file-video', 'mov': 'fa-file-video', 'mkv': 'fa-file-video',
-            'wmv': 'fa-file-video', 'flv': 'fa-file-video', 'webm': 'fa-file-video', 'm4v': 'fa-file-video',
-            'mp3': 'fa-file-audio', 'wav': 'fa-file-audio', 'ogg': 'fa-file-audio', 'flac': 'fa-file-audio',
-            'aac': 'fa-file-audio', 'm4a': 'fa-file-audio',
-            'zip': 'fa-file-archive', 'rar': 'fa-file-archive', '7z': 'fa-file-archive', 'tar': 'fa-file-archive',
-            'gz': 'fa-file-archive', 'bz2': 'fa-file-archive', 'xz': 'fa-file-archive',
-            'dwg': 'fa-draw-polygon', 'dxf': 'fa-draw-polygon', 'rvt': 'fa-cubes', 'ifc': 'fa-cubes',
-            'skp': 'fa-cube', '3ds': 'fa-cube', 'obj': 'fa-cube', 'stl': 'fa-cube', 'fbx': 'fa-cube',
-            'exe': 'fa-cogs', 'msi': 'fa-cogs', 'bin': 'fa-file-binary',
-            'html': 'fa-file-code', 'css': 'fa-file-code', 'js': 'fa-file-code', 'json': 'fa-file-code',
-            'xml': 'fa-file-code', 'php': 'fa-file-code', 'py': 'fa-file-code', 'java': 'fa-file-code',
-            'c': 'fa-file-code', 'cpp': 'fa-file-code', 'sql': 'fa-file-code',
+    (function(){
+        const firebaseConfig={
+            apiKey:"AIzaSyANa6zWkGrYQ7O7M6XT2oYbArsZIcs36M8",
+            authDomain:"trip-a9341.firebaseapp.com",
+            databaseURL:"https://trip-a9341-default-rtdb.firebaseio.com",
+            projectId:"trip-a9341",
+            storageBucket:"trip-a9341.firebasestorage.app",
+            messagingSenderId:"379336201132",
+            appId:"1:379336201132:web:ebeadba357d17635aba009"
         };
-        return icons[ext] || 'fa-file';
-    }
+        firebase.initializeApp(firebaseConfig);
+        const db=firebase.database();
 
-    function getFileColor(filename) {
-        const ext = filename.split('.').pop().toLowerCase();
-        const colors = {
-            'jpg': '#ec4899', 'jpeg': '#ec4899', 'png': '#ec4899', 'gif': '#ec4899',
-            'tif': '#ec4899', 'tiff': '#ec4899', 'psd': '#ec4899', 'raw': '#ec4899',
-            'pdf': '#ef4444', 'doc': '#3b82f6', 'docx': '#3b82f6', 'xls': '#10b981', 'xlsx': '#10b981',
-            'ppt': '#f59e0b', 'pptx': '#f59e0b', 'mp4': '#8b5cf6', 'mov': '#8b5cf6', 'avi': '#8b5cf6',
-            'mp3': '#06b6d4', 'wav': '#06b6d4', 'zip': '#f97316', 'rar': '#f97316', '7z': '#f97316',
-            'dwg': '#14b8a6', 'dxf': '#14b8a6', 'exe': '#ef4444'
-        };
-        return colors[ext] || '#94a3b8';
-    }
+        const CLOUD_NAME="dc1zqri3o";
+        const UPLOAD_PRESET="ncc_nordic";
 
-    // ==================== GENERERA GILTIGT FIREBASE-ID ====================
-    function generateValidId() {
-        return Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 10);
-    }
+        let currentFolder='allmant';
+        let allFiles=[];
+        let selectedFiles=new Set();
+        let currentView='grid';
+        let currentSort='date-desc';
+        let searchQuery='';
+        let contextFileId=null;
+        let onlineUsersCount=1;
+        let userPresenceRef=null;
+        const FOLDERS_LIST=['allmant','dokument','bilder','videor','ovrigt'];
+        let customFolders=new Set();
+        let folderMeta=new Map();
 
-    // ==================== MAPPHANTERING ====================
-    function loadCustomFolders() {
-        database.ref('custom_folders').once('value', (snapshot) => {
-            const data = snapshot.val();
-            customFolders.clear();
-            if (data) {
-                Object.keys(data).forEach(key => {
-                    customFolders.add(data[key].name);
-                });
-            }
-            renderFolderList();
-        });
-    }
+        const folderList=document.getElementById('folderList');
+        const dropzone=document.getElementById('dropzone');
+        const fileInput=document.getElementById('fileInput');
+        const fileGrid=document.getElementById('fileGrid');
+        const uploadBtn=document.getElementById('uploadBtn');
+        const deleteSelectedBtn=document.getElementById('deleteSelectedBtn');
+        const progressBar=document.getElementById('progressBar');
+        const progressFill=document.getElementById('progressFill');
+        const contextMenu=document.getElementById('contextMenu');
+        const sortBtn=document.getElementById('sortBtn');
+        const sortMenu=document.getElementById('sortMenu');
+        const searchInput=document.getElementById('searchInput');
+        const toast=document.getElementById('toast');
+        const onlineUsers=document.getElementById('onlineUsers');
+        const currentFolderTitle=document.getElementById('currentFolderTitle');
 
-    function saveCustomFolderToFirebase(folderName) {
-        const folderKey = folderName.toLowerCase().replace(/\s+/g, '_');
-        const newId = generateValidId();
-        database.ref(`custom_folders/${newId}`).set({
-            name: folderKey,
-            displayName: folderName,
-            createdAt: new Date().toISOString()
-        }).then(() => {
-            customFolders.add(folderKey);
-            renderFolderList();
-            showToast(`Mapp "${folderName}" skapades`);
-        }).catch(err => showToast('Fel vid skapande av mapp: ' + err.message, true));
-    }
+        const folderModal=document.getElementById('folderModal');
+        const folderModalTitle=document.getElementById('folderModalTitle');
+        const folderModalSub=document.getElementById('folderModalSub');
+        const folderModalName=document.getElementById('folderModalName');
+        const folderModalColor=document.getElementById('folderModalColor');
+        const folderModalIconSelector=document.getElementById('folderModalIconSelector');
+        const folderModalPreviewIcon=document.getElementById('folderModalPreviewIcon');
+        const folderModalPreviewName=document.getElementById('folderModalPreviewName');
+        const folderModalPreviewColor=document.getElementById('folderModalPreviewColor');
+        const folderModalCancel=document.getElementById('folderModalCancel');
+        const folderModalConfirm=document.getElementById('folderModalConfirm');
 
-    function deleteCustomFolderFromFirebase(folderKey) {
-        if (predefinedFolderKeys.includes(folderKey)) {
-            showToast('Standardmapp kan inte raderas', true);
-            return;
+        let modalMode='create';
+        let editingFolderKey=null;
+
+        function showToast(msg,isError=false){
+            toast.textContent=msg;
+            toast.className='toast show'+(isError?' error':'');
+            clearTimeout(toast._timeout);
+            toast._timeout=setTimeout(()=>{toast.className='toast';},3500);
         }
-        if (confirm(`Radera mappen "${folderKey}" och alla dess filer?`)) {
-            database.ref('custom_folders').once('value', (snapshot) => {
-                const data = snapshot.val();
-                if (data) {
-                    Object.keys(data).forEach(id => {
-                        if (data[id].name === folderKey) {
-                            database.ref(`custom_folders/${id}`).remove();
-                        }
+
+        function formatSize(bytes){
+            if(!bytes||bytes===0)return '0 B';
+            const k=1024;
+            const sizes=['B','KB','MB','GB','TB'];
+            const i=Math.floor(Math.log(bytes)/Math.log(k));
+            return parseFloat((bytes/Math.pow(k,i)).toFixed(2))+' '+sizes[i];
+        }
+
+        function escapeHtml(str){
+            const div=document.createElement('div');
+            div.textContent=str;
+            return div.innerHTML;
+        }
+
+        function generateValidId(){
+            return Date.now().toString(36)+'_'+Math.random().toString(36).substring(2,10);
+        }
+
+        function getFileIcon(filename){
+            const ext=filename.split('.').pop().toLowerCase();
+            const icons={
+                'jpg':'fa-file-image','jpeg':'fa-file-image','png':'fa-file-image',
+                'gif':'fa-file-image','bmp':'fa-file-image','svg':'fa-file-image',
+                'webp':'fa-file-image','ico':'fa-file-image','tif':'fa-file-image',
+                'tiff':'fa-file-image','raw':'fa-file-image','psd':'fa-file-image',
+                'ai':'fa-file-image','eps':'fa-file-image','heic':'fa-file-image','cr2':'fa-file-image',
+                'pdf':'fa-file-pdf','doc':'fa-file-word','docx':'fa-file-word',
+                'odt':'fa-file-word','xls':'fa-file-excel','xlsx':'fa-file-excel',
+                'csv':'fa-file-csv','ppt':'fa-file-powerpoint','pptx':'fa-file-powerpoint',
+                'odp':'fa-file-powerpoint','txt':'fa-file-alt','rtf':'fa-file-alt','md':'fa-file-alt',
+                'mp4':'fa-file-video','avi':'fa-file-video','mov':'fa-file-video',
+                'mkv':'fa-file-video','wmv':'fa-file-video','flv':'fa-file-video',
+                'webm':'fa-file-video','m4v':'fa-file-video',
+                'mp3':'fa-file-audio','wav':'fa-file-audio','ogg':'fa-file-audio',
+                'flac':'fa-file-audio','aac':'fa-file-audio','m4a':'fa-file-audio',
+                'zip':'fa-file-archive','rar':'fa-file-archive','7z':'fa-file-archive',
+                'tar':'fa-file-archive','gz':'fa-file-archive','bz2':'fa-file-archive',
+                'xz':'fa-file-archive','tgz':'fa-file-archive','zst':'fa-file-archive',
+                'lz':'fa-file-archive','lzma':'fa-file-archive','arj':'fa-file-archive',
+                'cab':'fa-file-archive','iso':'fa-file-archive','dmg':'fa-file-archive',
+                'dwg':'fa-draw-polygon','dxf':'fa-draw-polygon','rvt':'fa-cubes',
+                'ifc':'fa-cubes','skp':'fa-cube','3ds':'fa-cube','obj':'fa-cube',
+                'stl':'fa-cube','fbx':'fa-cube',
+                'exe':'fa-cogs','msi':'fa-cogs','bin':'fa-file-binary',
+                'html':'fa-file-code','css':'fa-file-code','js':'fa-file-code',
+                'json':'fa-file-code','xml':'fa-file-code','php':'fa-file-code',
+                'py':'fa-file-code','java':'fa-file-code','c':'fa-file-code',
+                'cpp':'fa-file-code','sql':'fa-file-code','ts':'fa-file-code',
+                'go':'fa-file-code','rb':'fa-file-code','rs':'fa-file-code'
+            };
+            return icons[ext]||'fa-file';
+        }
+
+        function getFileColor(filename){
+            const ext=filename.split('.').pop().toLowerCase();
+            const colors={
+                'jpg':'#ec4899','jpeg':'#ec4899','png':'#ec4899','gif':'#ec4899',
+                'tif':'#ec4899','tiff':'#ec4899','psd':'#ec4899','raw':'#ec4899',
+                'pdf':'#ef4444','doc':'#3b82f6','docx':'#3b82f6',
+                'xls':'#10b981','xlsx':'#10b981',
+                'ppt':'#f59e0b','pptx':'#f59e0b',
+                'mp4':'#8b5cf6','mov':'#8b5cf6','avi':'#8b5cf6',
+                'mp3':'#06b6d4','wav':'#06b6d4',
+                'zip':'#f97316','rar':'#f97316','7z':'#f97316',
+                'tar':'#f97316','gz':'#f97316','bz2':'#f97316','xz':'#f97316',
+                'dwg':'#14b8a6','dxf':'#14b8a6','exe':'#ef4444'
+            };
+            return colors[ext]||'#94a3b8';
+        }
+
+        function loadFoldersFromFirebase(){
+            return db.ref('custom_folders').once('value').then(snapshot=>{
+                const data=snapshot.val();
+                customFolders.clear();
+                folderMeta.clear();
+                if(data){
+                    Object.keys(data).forEach(key=>{
+                        const item=data[key];
+                        const name=item.name;
+                        customFolders.add(name);
+                        folderMeta.set(name,{
+                            icon:item.icon||'fa-folder',
+                            color:item.color||'#60a5fa',
+                            displayName:item.displayName||name
+                        });
                     });
                 }
+                renderFolderList();
+            }).catch(err=>{
+                showToast('Fel vid laddning av mappar: '+err.message,true);
             });
-            database.ref(`shared_files/${folderKey}`).remove();
-            customFolders.delete(folderKey);
-            if (currentFolder === folderKey) {
-                switchFolder('general');
-            }
-            renderFolderList();
-            showToast(`Mapp "${folderKey}" raderad`);
         }
-    }
 
-    function renderFolderList() {
-        let allFolders = [...predefinedFolderKeys, ...Array.from(customFolders)];
-        allFolders.sort();
-        folderList.innerHTML = allFolders.map(folder => {
-            const displayName = folderDisplayNames[folder] || folder.charAt(0).toUpperCase() + folder.slice(1);
-            const isActive = currentFolder === folder;
-            const isDeletable = !predefinedFolderKeys.includes(folder);
-            let iconClass = 'fa-folder';
-            if (folder === 'imagenes') iconClass = 'fa-image';
-            else if (folder === 'videos') iconClass = 'fa-video';
-            else if (folder === 'documentos') iconClass = 'fa-file-alt';
-            else if (folder === 'otros') iconClass = 'fa-archive';
-            return `
-                <li class="folder-item ${isActive ? 'active' : ''}" data-folder="${folder}">
-                    <i class="fas ${iconClass}"></i>
-                    <span class="folder-name">${escapeHtml(displayName)}</span>
-                    ${isDeletable ? `<button class="delete-folder-btn" data-folder-delete="${folder}" title="Radera mapp"><i class="fas fa-trash"></i></button>` : ''}
-                </li>
-            `;
-        }).join('');
-
-        document.querySelectorAll('.folder-item').forEach(item => {
-            const folderName = item.dataset.folder;
-            item.addEventListener('click', (e) => {
-                if (!e.target.closest('.delete-folder-btn')) {
-                    switchFolder(folderName);
-                }
-            });
-            const deleteBtn = item.querySelector('.delete-folder-btn');
-            if (deleteBtn) {
-                deleteBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    deleteCustomFolderFromFirebase(folderName);
+        function saveCustomFolderToFirebase(folderName,icon,color){
+            const folderKey=folderName.toLowerCase().replace(/\s+/g,'_');
+            const newId=generateValidId();
+            return db.ref(`custom_folders/${newId}`).set({
+                name:folderKey,
+                displayName:folderName.trim(),
+                icon:icon||'fa-folder',
+                color:color||'#60a5fa',
+                createdAt:new Date().toISOString()
+            }).then(()=>{
+                customFolders.add(folderKey);
+                folderMeta.set(folderKey,{
+                    icon:icon||'fa-folder',
+                    color:color||'#60a5fa',
+                    displayName:folderName.trim()
                 });
-            }
-        });
-    }
+                renderFolderList();
+                showToast(`Mapp "${folderName}" skapades`);
+            }).catch(err=>{
+                showToast('Fel vid skapande av mapp: '+err.message,true);
+            });
+        }
 
-    function switchFolder(folder) {
-        currentFolder = folder;
-        const displayName = folderDisplayNames[folder] || folder.charAt(0).toUpperCase() + folder.slice(1);
-        currentFolderTitle.innerHTML = `📁 ${displayName}`;
-        document.querySelectorAll('.folder-item').forEach(item => {
-            item.classList.toggle('active', item.dataset.folder === folder);
-        });
-        selectedFiles.clear();
-        loadFiles();
-    }
-
-    // ==================== FILHANTERING ====================
-    function loadFiles() {
-        database.ref(`shared_files/${currentFolder}`).off();
-        database.ref(`shared_files/${currentFolder}`).on('value', (snapshot) => {
-            const data = snapshot.val();
-            allFiles = [];
-            if (data) {
-                Object.keys(data).forEach(key => {
-                    allFiles.push({
-                        id: key,
-                        ...data[key]
+        function updateCustomFolderInFirebase(folderKey,newDisplayName,icon,color){
+            return db.ref('custom_folders').once('value').then(snapshot=>{
+                const data=snapshot.val();
+                let foundId=null;
+                if(data){
+                    Object.keys(data).forEach(id=>{
+                        if(data[id].name===folderKey)foundId=id;
                     });
+                }
+                if(!foundId){
+                    showToast('Mappen hittades inte i databasen',true);
+                    return;
+                }
+                return db.ref(`custom_folders/${foundId}`).update({
+                    displayName:newDisplayName.trim(),
+                    icon:icon||'fa-folder',
+                    color:color||'#60a5fa'
+                }).then(()=>{
+                    folderMeta.set(folderKey,{
+                        icon:icon||'fa-folder',
+                        color:color||'#60a5fa',
+                        displayName:newDisplayName.trim()
+                    });
+                    renderFolderList();
+                    if(currentFolder===folderKey)updateFolderTitle(folderKey);
+                    showToast('Mappen uppdaterades');
                 });
-            }
-            selectedFiles.clear();
-            renderFiles();
-        });
-    }
-
-    function getSortedFiles(files) {
-        let filtered = files.filter(f =>
-            f.filename.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-        switch (currentSort) {
-            case 'name-asc':
-                filtered.sort((a, b) => a.filename.localeCompare(b.filename));
-                break;
-            case 'name-desc':
-                filtered.sort((a, b) => b.filename.localeCompare(a.filename));
-                break;
-            case 'date-desc':
-                filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
-                break;
-            case 'date-asc':
-                filtered.sort((a, b) => new Date(a.date) - new Date(b.date));
-                break;
-            case 'size-desc':
-                filtered.sort((a, b) => (b.size || 0) - (a.size || 0));
-                break;
-            case 'size-asc':
-                filtered.sort((a, b) => (a.size || 0) - (b.size || 0));
-                break;
-            default:
-                filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
-        }
-        return filtered;
-    }
-
-    function renderFiles() {
-        const sortedFiles = getSortedFiles(allFiles);
-        fileGrid.className = 'file-grid' + (currentView === 'list' ? ' list-view' : '');
-
-        if (sortedFiles.length === 0) {
-            fileGrid.innerHTML = `
-                <div class="empty-state" style="grid-column: 1/-1;">
-                    <i class="fas fa-folder-open"></i>
-                    <p>Inga filer i denna mapp</p>
-                    <small>Dra filer hit eller klicka för att ladda upp</small>
-                </div>`;
-            deleteSelectedBtn.style.display = 'none';
-            return;
-        }
-
-        deleteSelectedBtn.style.display = selectedFiles.size > 0 ? 'inline-flex' : 'none';
-
-        fileGrid.innerHTML = sortedFiles.map(file => {
-            const isSelected = selectedFiles.has(file.id);
-            const iconClass = getFileIcon(file.filename);
-            const iconColor = getFileColor(file.filename);
-            const date = new Date(file.date).toLocaleDateString('sv-SE', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
+            }).catch(err=>{
+                showToast('Fel vid uppdatering: '+err.message,true);
             });
-
-            return `
-                <div class="file-card${isSelected ? ' selected' : ''}" data-file-id="${file.id}">
-                    <input type="checkbox" class="checkbox" ${isSelected ? 'checked' : ''} 
-                           onclick="event.stopPropagation(); toggleFileSelection('${file.id}', this.checked)">
-                    <div class="file-icon" style="color: ${iconColor};">
-                        <i class="fas ${iconClass}"></i>
-                    </div>
-                    <div class="file-info">
-                        <span class="file-name">${escapeHtml(file.filename)}</span>
-                        <div class="file-meta">
-                            <span>${formatSize(file.size)}</span>
-                            <span>${date}</span>
-                            ${file.uploadedBy ? `<span><i class="fas fa-user"></i> ${escapeHtml(file.uploadedBy)}</span>` : ''}
-                        </div>
-                    </div>
-                    ${currentView === 'list' ? `
-                        <div class="file-actions">
-                            <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); downloadFile('${file.id}')">
-                                <i class="fas fa-download"></i>
-                            </button>
-                            <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); renameFilePrompt('${file.id}')">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button class="btn btn-danger btn-sm" onclick="event.stopPropagation(); deleteSingleFile('${file.id}')">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-        }).join('');
-
-        document.querySelectorAll('.file-card').forEach(card => {
-            card.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                contextFileId = card.dataset.fileId;
-                contextMenu.style.display = 'block';
-                contextMenu.style.left = e.pageX + 'px';
-                contextMenu.style.top = e.pageY + 'px';
-            });
-        });
-    }
-
-    function toggleFileSelection(fileId, isChecked) {
-        if (isChecked) {
-            selectedFiles.add(fileId);
-        } else {
-            selectedFiles.delete(fileId);
-        }
-        renderFiles();
-    }
-
-    // LADDA NER MED ORIGINALNAMN (fetch + blob)
-    async function downloadFile(fileId) {
-        const file = allFiles.find(f => f.id === fileId);
-        if (!file) return;
-        try {
-            showToast('Förbereder nedladdning...');
-            const response = await fetch(file.url);
-            if (!response.ok) throw new Error('Kunde inte hämta filen');
-            const blob = await response.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = blobUrl;
-            a.download = file.filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(blobUrl);
-            showToast(`Laddar ner: ${file.filename}`);
-        } catch (error) {
-            console.error(error);
-            showToast('Fel vid nedladdning, försök igen', true);
-        }
-    }
-
-    function renameFilePrompt(fileId) {
-        const file = allFiles.find(f => f.id === fileId);
-        if (!file) return;
-        const newName = prompt('Byt namn på fil:', file.filename);
-        if (newName && newName.trim() && newName !== file.filename) {
-            database.ref(`shared_files/${currentFolder}/${fileId}`).update({
-                filename: newName.trim()
-            });
-            showToast('Filnamn ändrat');
-        }
-    }
-
-    function deleteSingleFile(fileId) {
-        if (confirm('Radera den här filen?')) {
-            database.ref(`shared_files/${currentFolder}/${fileId}`).remove();
-            showToast('Fil raderad');
-        }
-    }
-
-    function deleteSelectedFiles() {
-        if (selectedFiles.size === 0) return;
-        if (confirm(`Radera ${selectedFiles.size} markerade fil(er)?`)) {
-            const updates = {};
-            selectedFiles.forEach(id => {
-                updates[`shared_files/${currentFolder}/${id}`] = null;
-            });
-            database.ref().update(updates);
-            selectedFiles.clear();
-            showToast('Filer raderade');
-        }
-    }
-
-    // ==================== UPPADDNING AV FILER ====================
-    async function uploadFiles(filesToUpload) {
-        if (!filesToUpload || filesToUpload.length === 0) return;
-
-        uploadBtn.disabled = true;
-        progressBar.style.display = 'block';
-        progressFill.style.width = '0%';
-        let completed = 0;
-        const total = filesToUpload.length;
-
-        for (const file of filesToUpload) {
-            try {
-                const formData = new FormData();
-                const timestamp = Date.now();
-                const safeName = file.name.replace(/[^a-zA-Z0-9åäöÅÄÖ.\- ]/g, '_');
-                formData.append('file', file);
-                formData.append('upload_preset', UPLOAD_PRESET);
-                formData.append('folder', `${SHARED_FOLDER}/${currentFolder}`);
-                formData.append('public_id', `${SHARED_FOLDER}/${currentFolder}/${timestamp}_${safeName}`);
-                formData.append('resource_type', 'auto');
-
-                const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`, {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await res.json();
-
-                if (!res.ok) throw new Error(data.error?.message || 'Fel vid uppladdning');
-
-                const fileData = {
-                    filename: file.name,
-                    size: file.size,
-                    url: data.secure_url,
-                    type: file.name.split('.').pop().toLowerCase(),
-                    date: new Date().toISOString(),
-                    uploadedBy: 'Användare ' + Math.floor(Math.random() * 1000),
-                    folder: currentFolder
-                };
-
-                await database.ref(`shared_files/${currentFolder}`).push(fileData);
-            } catch (err) {
-                showToast('Fel vid uppladdning: ' + file.name, true);
-            }
-            completed++;
-            progressFill.style.width = ((completed / total) * 100) + '%';
         }
 
-        uploadBtn.disabled = false;
-        setTimeout(() => {
-            progressBar.style.display = 'none';
-            progressFill.style.width = '0%';
-        }, 1000);
-
-        showToast(total + ' fil(er) uppladdade');
-    }
-
-    // ==================== NÄRVARO ====================
-    function setupPresence() {
-        const presenceRef = database.ref('presence');
-        userPresenceRef = presenceRef.push();
-        userPresenceRef.set(true);
-        userPresenceRef.onDisconnect().remove();
-
-        presenceRef.on('value', (snapshot) => {
-            onlineUsersCount = snapshot.numChildren();
-            onlineUsers.textContent = onlineUsersCount;
-        });
-    }
-
-    // ==================== VISA ====================
-    function setView(view) {
-        currentView = view;
-        document.querySelectorAll('.view-toggle button').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.view === view);
-        });
-        renderFiles();
-    }
-
-    // ==================== HÄNDELSER OCH INITIERING ====================
-    setupPresence();
-    loadCustomFolders();
-
-    document.querySelectorAll('.view-toggle button').forEach(btn => {
-        btn.addEventListener('click', () => setView(btn.dataset.view));
-    });
-
-    document.getElementById('newFolderBtn').addEventListener('click', () => {
-        const folderName = prompt('Namn på den nya mappen:');
-        if (folderName && folderName.trim()) {
-            const folderKey = folderName.trim().toLowerCase().replace(/\s+/g, '_');
-            if (predefinedFolderKeys.includes(folderKey) || customFolders.has(folderKey)) {
-                showToast('En mapp med det namnet finns redan', true);
+        function deleteCustomFolderFromFirebase(folderKey){
+            if(FOLDERS_LIST.includes(folderKey)){
+                showToast('Standardmapp kan inte raderas',true);
                 return;
             }
-            saveCustomFolderToFirebase(folderName.trim());
-        }
-    });
-
-    document.querySelectorAll('.context-menu-item').forEach(item => {
-        item.addEventListener('click', () => {
-            const action = item.dataset.action;
-            contextMenu.style.display = 'none';
-            if (!contextFileId) return;
-
-            switch (action) {
-                case 'download':
-                    downloadFile(contextFileId);
-                    break;
-                case 'rename':
-                    renameFilePrompt(contextFileId);
-                    break;
-                case 'copy-link':
-                    const file = allFiles.find(f => f.id === contextFileId);
-                    if (file) {
-                        navigator.clipboard.writeText(file.url);
-                        showToast('Länk kopierad');
+            db.ref(`shared_files/${folderKey}`).once('value').then(snapshot=>{
+                if(snapshot.exists()){
+                    showToast('Mappen innehåller filer. Ta bort filerna först.',true);
+                    return;
+                }
+                if(!confirm(`Radera mappen "${folderKey}"?`))return;
+                db.ref('custom_folders').once('value').then(snap=>{
+                    const data=snap.val();
+                    if(data){
+                        Object.keys(data).forEach(id=>{
+                            if(data[id].name===folderKey){
+                                db.ref(`custom_folders/${id}`).remove();
+                            }
+                        });
                     }
-                    break;
-                case 'delete':
-                    deleteSingleFile(contextFileId);
-                    break;
+                });
+                customFolders.delete(folderKey);
+                folderMeta.delete(folderKey);
+                if(currentFolder===folderKey){
+                    switchFolder('allmant');
+                }else{
+                    renderFolderList();
+                }
+                showToast(`Mapp "${folderKey}" raderad`);
+            });
+        }
+
+        function updateFolderTitle(folderKey){
+            const meta=folderMeta.get(folderKey)||{icon:'fa-folder',color:'#60a5fa'};
+            let displayName=meta.displayName||folderKey;
+            if(folderKey==='allmant')displayName='Allmänt';
+            else if(folderKey==='dokument')displayName='Dokument';
+            else if(folderKey==='bilder')displayName='Bilder';
+            else if(folderKey==='videor')displayName='Videor';
+            else if(folderKey==='ovrigt')displayName='Övrigt';
+            currentFolderTitle.innerHTML=`<i class="fas ${meta.icon}" style="color:${meta.color};"></i> ${displayName}`;
+        }
+
+        function renderFolderList(){
+            let allFolders=[...FOLDERS_LIST,...Array.from(customFolders)];
+            const standard=FOLDERS_LIST;
+            const customSorted=Array.from(customFolders).sort((a,b)=>a.localeCompare(b));
+            allFolders=[...standard,...customSorted];
+
+            folderList.innerHTML=allFolders.map(folder=>{
+                const meta=folderMeta.get(folder)||{icon:'fa-folder',color:'#60a5fa',displayName:folder};
+                let displayName=meta.displayName||folder;
+                if(folder==='allmant')displayName='Allmänt';
+                else if(folder==='dokument')displayName='Dokument';
+                else if(folder==='bilder')displayName='Bilder';
+                else if(folder==='videor')displayName='Videor';
+                else if(folder==='ovrigt')displayName='Övrigt';
+                const isActive=currentFolder===folder;
+                const isDeletable=!FOLDERS_LIST.includes(folder);
+                const icon=meta.icon||'fa-folder';
+                const color=meta.color||'#60a5fa';
+                return `
+                    <li class="folder-item ${isActive?'active':''}" data-folder="${folder}" style="border-left-color:${color};">
+                        <i class="fas ${icon}" style="color:${isActive?'white':color};"></i>
+                        <span class="folder-name">${escapeHtml(displayName)}</span>
+                        <div class="folder-actions">
+                            ${isDeletable?`<button class="edit-folder-btn" data-folder-edit="${folder}" title="Redigera mapp"><i class="fas fa-pen"></i></button>`:''}
+                            ${isDeletable?`<button class="delete-folder-btn" data-folder-delete="${folder}" title="Radera mapp"><i class="fas fa-trash"></i></button>`:''}
+                        </div>
+                    </li>
+                `;
+            }).join('');
+
+            document.querySelectorAll('.folder-item').forEach(item=>{
+                const folderName=item.dataset.folder;
+                item.addEventListener('click',e=>{
+                    if(!e.target.closest('.folder-actions'))switchFolder(folderName);
+                });
+                const editBtn=item.querySelector('.edit-folder-btn');
+                if(editBtn){
+                    editBtn.addEventListener('click',e=>{
+                        e.stopPropagation();
+                        openEditFolderModal(folderName);
+                    });
+                }
+                const deleteBtn=item.querySelector('.delete-folder-btn');
+                if(deleteBtn){
+                    deleteBtn.addEventListener('click',e=>{
+                        e.stopPropagation();
+                        deleteCustomFolderFromFirebase(folderName);
+                    });
+                }
+            });
+        }
+
+        function switchFolder(folder){
+            if(currentFolder===folder)return;
+            currentFolder=folder;
+            updateFolderTitle(folder);
+            document.querySelectorAll('.folder-item').forEach(item=>{
+                item.classList.toggle('active',item.dataset.folder===folder);
+            });
+            selectedFiles.clear();
+            loadFiles();
+        }
+
+        function loadFiles(){
+            const ref=db.ref(`shared_files/${currentFolder}`);
+            ref.off();
+            ref.on('value',snapshot=>{
+                const data=snapshot.val();
+                allFiles=[];
+                if(data){
+                    Object.keys(data).forEach(key=>{
+                        allFiles.push({id:key,...data[key]});
+                    });
+                }
+                selectedFiles.clear();
+                renderFiles();
+            },err=>{
+                showToast('Fel vid laddning av filer: '+err.message,true);
+            });
+        }
+
+        function getSortedFiles(files){
+            let filtered=files.filter(f=>f.filename&&f.filename.toLowerCase().includes(searchQuery.toLowerCase()));
+            switch(currentSort){
+                case 'name-asc':filtered.sort((a,b)=>(a.filename||'').localeCompare(b.filename||''));break;
+                case 'name-desc':filtered.sort((a,b)=>(b.filename||'').localeCompare(a.filename||''));break;
+                case 'date-desc':filtered.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));break;
+                case 'date-asc':filtered.sort((a,b)=>new Date(a.date||0)-new Date(b.date||0));break;
+                case 'size-desc':filtered.sort((a,b)=>(b.size||0)-(a.size||0));break;
+                case 'size-asc':filtered.sort((a,b)=>(a.size||0)-(b.size||0));break;
+                default:filtered.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
             }
+            return filtered;
+        }
+
+        function renderFiles(){
+            const sortedFiles=getSortedFiles(allFiles);
+            fileGrid.className='file-grid'+(currentView==='list'?' list-view':'');
+            if(sortedFiles.length===0){
+                fileGrid.innerHTML=`<div class="empty-state" style="grid-column:1/-1;"><i class="fas fa-folder-open"></i><p>Inga filer i denna mapp</p><small>Dra filer hit eller klicka för att ladda upp</small></div>`;
+                deleteSelectedBtn.style.display='none';
+                return;
+            }
+            deleteSelectedBtn.style.display=selectedFiles.size>0?'inline-flex':'none';
+            fileGrid.innerHTML=sortedFiles.map(file=>{
+                const isSelected=selectedFiles.has(file.id);
+                const iconClass=getFileIcon(file.filename||'');
+                const iconColor=getFileColor(file.filename||'');
+                const date=file.date?new Date(file.date).toLocaleDateString('sv-SE',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+                return `
+                    <div class="file-card${isSelected?' selected':''}" data-file-id="${file.id}">
+                        <input type="checkbox" class="checkbox" ${isSelected?'checked':''} onclick="event.stopPropagation();toggleFileSelection('${file.id}',this.checked)">
+                        <div class="file-icon" style="color:${iconColor};"><i class="fas ${iconClass}"></i></div>
+                        <div class="file-info">
+                            <span class="file-name">${escapeHtml(file.filename||'')}</span>
+                            <div class="file-meta">
+                                <span>${formatSize(file.size)}</span>
+                                ${date?`<span>${date}</span>`:''}
+                                ${file.uploadedBy?`<span><i class="fas fa-user"></i> ${escapeHtml(file.uploadedBy)}</span>`:''}
+                            </div>
+                        </div>
+                        ${currentView==='list'?`
+                            <div class="file-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();downloadFile('${file.id}')"><i class="fas fa-download"></i></button>
+                                <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();renameFilePrompt('${file.id}')"><i class="fas fa-edit"></i></button>
+                                <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteSingleFile('${file.id}')"><i class="fas fa-trash"></i></button>
+                            </div>
+                        `:''}
+                    </div>
+                `;
+            }).join('');
+            document.querySelectorAll('.file-card').forEach(card=>{
+                card.addEventListener('contextmenu',e=>{
+                    e.preventDefault();
+                    contextFileId=card.dataset.fileId;
+                    contextMenu.style.display='block';
+                    contextMenu.style.left=Math.min(e.pageX,window.innerWidth-200)+'px';
+                    contextMenu.style.top=Math.min(e.pageY,window.innerHeight-150)+'px';
+                });
+            });
+        }
+
+        window.toggleFileSelection=function(fileId,isChecked){
+            if(isChecked)selectedFiles.add(fileId);
+            else selectedFiles.delete(fileId);
+            renderFiles();
+        };
+
+        async function downloadFile(fileId){
+            const file=allFiles.find(f=>f.id===fileId);
+            if(!file)return;
+            try{
+                showToast('Förbereder nedladdning...');
+                const resp=await fetch(file.url);
+                if(!resp.ok)throw new Error('Kunde inte hämta filen');
+                const blob=await resp.blob();
+                const url=URL.createObjectURL(blob);
+                const a=document.createElement('a');
+                a.href=url;
+                a.download=file.filename||'fil';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast(`Laddar ner: ${file.filename}`);
+            }catch(err){
+                console.error(err);
+                showToast('Fel vid nedladdning',true);
+            }
+        }
+
+        window.downloadFile=downloadFile;
+
+        function renameFilePrompt(fileId){
+            const file=allFiles.find(f=>f.id===fileId);
+            if(!file)return;
+            const newName=prompt('Byt namn på fil:',file.filename);
+            if(newName&&newName.trim()&&newName!==file.filename){
+                db.ref(`shared_files/${currentFolder}/${fileId}`).update({filename:newName.trim()});
+                showToast('Filnamn ändrat');
+            }
+        }
+
+        window.renameFilePrompt=renameFilePrompt;
+
+        function deleteSingleFile(fileId){
+            if(confirm('Radera den här filen?')){
+                db.ref(`shared_files/${currentFolder}/${fileId}`).remove();
+                showToast('Fil raderad');
+            }
+        }
+
+        window.deleteSingleFile=deleteSingleFile;
+
+        function deleteSelectedFiles(){
+            if(selectedFiles.size===0)return;
+            if(confirm(`Radera ${selectedFiles.size} markerade fil(er)?`)){
+                const updates={};
+                selectedFiles.forEach(id=>{updates[`shared_files/${currentFolder}/${id}`]=null;});
+                db.ref().update(updates);
+                selectedFiles.clear();
+                showToast('Filer raderade');
+            }
+        }
+
+        // ============================================================
+        // UPPADDNING AV FILER – CORREGIDO PARA ncc_nordic
+        // ============================================================
+        async function uploadFiles(filesToUpload){
+            if(!filesToUpload||filesToUpload.length===0)return;
+            
+            uploadBtn.disabled=true;
+            progressBar.style.display='block';
+            progressFill.style.width='0%';
+            let completed=0;
+            const total=filesToUpload.length;
+
+            for(const file of filesToUpload){
+                try{
+                    const formData=new FormData();
+                    formData.append('file',file);
+                    formData.append('upload_preset',UPLOAD_PRESET);
+                    // NO enviamos 'folder' ni 'public_id' porque:
+                    // - disallow_public_id = true en el preset
+                    // - asset_folder = "underlag" (Cloudinary lo usa automáticamente)
+                    
+                    const res=await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`,{
+                        method:'POST',
+                        body:formData
+                    });
+                    const data=await res.json();
+                    
+                    if(!res.ok){
+                        let errMsg=data.error?.message||'Okänt fel';
+                        throw new Error(errMsg);
+                    }
+
+                    await db.ref(`shared_files/${currentFolder}`).push({
+                        filename:file.name,
+                        size:file.size,
+                        url:data.secure_url,
+                        type:file.name.split('.').pop().toLowerCase(),
+                        date:new Date().toISOString(),
+                        uploadedBy:'Användare '+Math.floor(Math.random()*1000),
+                        folder:currentFolder,
+                        cloudinaryId:data.public_id
+                    });
+                }catch(err){
+                    showToast('Fel vid uppladdning: '+file.name+' – '+err.message,true);
+                    console.error('Cloudinary error:',err);
+                }
+                completed++;
+                progressFill.style.width=((completed/total)*100)+'%';
+            }
+
+            uploadBtn.disabled=false;
+            setTimeout(()=>{
+                progressBar.style.display='none';
+                progressFill.style.width='0%';
+            },1000);
+            showToast(total+' fil(er) uppladdade');
+        }
+
+        function setupPresence(){
+            const presenceRef=db.ref('presence');
+            userPresenceRef=presenceRef.push();
+            userPresenceRef.set(true);
+            userPresenceRef.onDisconnect().remove();
+            presenceRef.on('value',snapshot=>{
+                onlineUsersCount=snapshot.numChildren();
+                onlineUsers.textContent=onlineUsersCount;
+            });
+        }
+
+        function setView(view){
+            currentView=view;
+            document.querySelectorAll('.view-toggle button').forEach(btn=>{
+                btn.classList.toggle('active',btn.dataset.view===view);
+            });
+            renderFiles();
+        }
+
+        const AVAILABLE_ICONS=[
+            'fa-folder','fa-folder-open','fa-folder-plus','fa-images','fa-video',
+            'fa-file-alt','fa-archive','fa-music','fa-code','fa-palette',
+            'fa-cogs','fa-users','fa-star','fa-heart','fa-cloud',
+            'fa-database','fa-shield-alt','fa-lock','fa-key','fa-globe',
+            'fa-home','fa-rocket','fa-gem','fa-crown','fa-bolt'
+        ];
+        let selectedIcon='fa-folder';
+
+        function renderIconSelector(container,selected){
+            container.innerHTML='';
+            AVAILABLE_ICONS.forEach(ic=>{
+                const btn=document.createElement('div');
+                btn.className='icon-option'+(ic===selected?' active':'');
+                btn.innerHTML=`<i class="fas ${ic}"></i>`;
+                btn.dataset.icon=ic;
+                btn.addEventListener('click',()=>{
+                    container.querySelectorAll('.icon-option').forEach(b=>b.classList.remove('active'));
+                    btn.classList.add('active');
+                    selectedIcon=ic;
+                    updateFolderPreview();
+                });
+                container.appendChild(btn);
+            });
+        }
+
+        function updateFolderPreview(){
+            const name=folderModalName.value.trim()||'min-mapp';
+            const color=folderModalColor.value||'#60a5fa';
+            folderModalPreviewIcon.className='fas '+selectedIcon+' preview-icon';
+            folderModalPreviewIcon.style.color=color;
+            folderModalPreviewName.textContent=name;
+            folderModalPreviewColor.style.background=color;
+        }
+
+        function openCreateFolderModal(){
+            modalMode='create';
+            editingFolderKey=null;
+            folderModalTitle.textContent='📁 Skapa ny mapp';
+            folderModalSub.textContent='Välj namn, ikon och färg för din nya mapp.';
+            folderModalConfirm.innerHTML='<i class="fas fa-plus"></i> Skapa';
+            folderModalName.value='';
+            folderModalColor.value='#60a5fa';
+            selectedIcon='fa-folder';
+            renderIconSelector(folderModalIconSelector,selectedIcon);
+            updateFolderPreview();
+            folderModal.classList.add('active');
+            setTimeout(()=>folderModalName.focus(),150);
+        }
+
+        function openEditFolderModal(folderKey){
+            const meta=folderMeta.get(folderKey);
+            if(!meta){showToast('Mappen saknar metadata',true);return;}
+            modalMode='edit';
+            editingFolderKey=folderKey;
+            folderModalTitle.textContent='✏️ Redigera mapp';
+            folderModalSub.textContent='Ändra namn, ikon eller färg.';
+            folderModalConfirm.innerHTML='<i class="fas fa-save"></i> Spara';
+            folderModalName.value=meta.displayName||folderKey;
+            folderModalColor.value=meta.color||'#60a5fa';
+            selectedIcon=meta.icon||'fa-folder';
+            renderIconSelector(folderModalIconSelector,selectedIcon);
+            updateFolderPreview();
+            folderModal.classList.add('active');
+            setTimeout(()=>folderModalName.focus(),150);
+        }
+
+        function closeFolderModal(){
+            folderModal.classList.remove('active');
+        }
+
+        function confirmFolderModal(){
+            const name=folderModalName.value.trim();
+            if(!name){showToast('Ange ett namn',true);folderModalName.focus();return;}
+            const color=folderModalColor.value||'#60a5fa';
+            const icon=selectedIcon;
+            if(modalMode==='create'){
+                const folderKey=name.toLowerCase().replace(/\s+/g,'_');
+                if(FOLDERS_LIST.includes(folderKey)||customFolders.has(folderKey)){
+                    showToast('En mapp med det namnet finns redan',true);
+                    folderModalName.focus();
+                    return;
+                }
+                saveCustomFolderToFirebase(name,icon,color).then(closeFolderModal);
+            }else if(modalMode==='edit'&&editingFolderKey){
+                const newKey=name.toLowerCase().replace(/\s+/g,'_');
+                if(newKey!==editingFolderKey&&(FOLDERS_LIST.includes(newKey)||customFolders.has(newKey))){
+                    showToast('En mapp med det namnet finns redan',true);
+                    folderModalName.focus();
+                    return;
+                }
+                updateCustomFolderInFirebase(editingFolderKey,name,icon,color).then(closeFolderModal);
+            }
+        }
+
+        setupPresence();
+        loadFoldersFromFirebase().then(()=>{
+            loadFiles();
+            updateFolderTitle('allmant');
         });
-    });
 
-    sortBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        sortMenu.style.display = sortMenu.style.display === 'none' ? 'block' : 'none';
-    });
+        document.querySelectorAll('.view-toggle button').forEach(btn=>{
+            btn.addEventListener('click',()=>setView(btn.dataset.view));
+        });
 
-    document.querySelectorAll('.sort-menu-item').forEach(item => {
-        item.addEventListener('click', () => {
-            currentSort = item.dataset.sort;
-            sortMenu.style.display = 'none';
+        document.getElementById('newFolderBtn').addEventListener('click',openCreateFolderModal);
+        folderModalCancel.addEventListener('click',closeFolderModal);
+        folderModalConfirm.addEventListener('click',confirmFolderModal);
+        folderModal.addEventListener('click',e=>{if(e.target===folderModal)closeFolderModal();});
+        document.addEventListener('keydown',e=>{
+            if(e.key==='Escape'&&folderModal.classList.contains('active'))closeFolderModal();
+            if(e.key==='Enter'&&folderModal.classList.contains('active'))confirmFolderModal();
+        });
+        folderModalName.addEventListener('input',updateFolderPreview);
+        folderModalColor.addEventListener('input',updateFolderPreview);
+
+        document.querySelectorAll('.context-menu-item').forEach(item=>{
+            item.addEventListener('click',()=>{
+                const action=item.dataset.action;
+                contextMenu.style.display='none';
+                if(!contextFileId)return;
+                switch(action){
+                    case 'download':downloadFile(contextFileId);break;
+                    case 'rename':renameFilePrompt(contextFileId);break;
+                    case 'copy-link':{
+                        const file=allFiles.find(f=>f.id===contextFileId);
+                        if(file){
+                            navigator.clipboard.writeText(file.url).then(()=>showToast('Länk kopierad')).catch(()=>{
+                                const ta=document.createElement('textarea');
+                                ta.value=file.url;
+                                document.body.appendChild(ta);
+                                ta.select();
+                                document.execCommand('copy');
+                                document.body.removeChild(ta);
+                                showToast('Länk kopierad');
+                            });
+                        }
+                        break;
+                    }
+                    case 'delete':deleteSingleFile(contextFileId);break;
+                }
+            });
+        });
+
+        sortBtn.addEventListener('click',e=>{
+            e.stopPropagation();
+            sortMenu.style.display=sortMenu.style.display==='none'?'block':'none';
+        });
+        document.querySelectorAll('.sort-menu-item').forEach(item=>{
+            item.addEventListener('click',()=>{
+                currentSort=item.dataset.sort;
+                sortMenu.style.display='none';
+                renderFiles();
+            });
+        });
+        searchInput.addEventListener('input',e=>{
+            searchQuery=e.target.value;
             renderFiles();
         });
-    });
+        document.addEventListener('click',()=>{
+            contextMenu.style.display='none';
+            sortMenu.style.display='none';
+        });
 
-    searchInput.addEventListener('input', (e) => {
-        searchQuery = e.target.value;
-        renderFiles();
-    });
-
-    document.addEventListener('click', () => {
-        contextMenu.style.display = 'none';
-        sortMenu.style.display = 'none';
-    });
-
-    dropzone.addEventListener('dragover', e => {
-        e.preventDefault();
-        dropzone.classList.add('drag-over');
-    });
-    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
-    dropzone.addEventListener('drop', e => {
-        e.preventDefault();
-        dropzone.classList.remove('drag-over');
-        uploadFiles(Array.from(e.dataTransfer.files));
-    });
-    dropzone.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', e => {
-        uploadFiles(Array.from(e.target.files));
-        fileInput.value = '';
-    });
-    uploadBtn.addEventListener('click', () => fileInput.click());
-    deleteSelectedBtn.addEventListener('click', deleteSelectedFiles);
-
-    // Starta laddning av filer (standardmappen "general" - Allmänt)
-    loadFiles();
+        dropzone.addEventListener('dragover',e=>{e.preventDefault();dropzone.classList.add('drag-over');});
+        dropzone.addEventListener('dragleave',()=>dropzone.classList.remove('drag-over'));
+        dropzone.addEventListener('drop',e=>{
+            e.preventDefault();
+            dropzone.classList.remove('drag-over');
+            uploadFiles(Array.from(e.dataTransfer.files));
+        });
+        dropzone.addEventListener('click',()=>fileInput.click());
+        fileInput.addEventListener('change',e=>{
+            uploadFiles(Array.from(e.target.files));
+            fileInput.value='';
+        });
+        uploadBtn.addEventListener('click',()=>fileInput.click());
+        deleteSelectedBtn.addEventListener('click',deleteSelectedFiles);
+    })();
 </script>
-		<script src="tools.js"></script>
 </body>
 </html>
