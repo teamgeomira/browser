@@ -1,266 +1,266 @@
 /**
- * tools.js - Herramientas avanzadas para la Carpeta Compartida Online
- * Versión mejorada con detección robusta de selección de archivos.
+ * verktyg.js - Avancerade verktyg för Delad Mapp Online
+ * Förbättrad version med robust upptäckt av filval.
  */
 
 (function() {
-    // Esperar a que el DOM esté listo
-    function ready(fn) {
+    // Vänta tills DOM är redo
+    function redo(fn) {
         if (document.readyState !== 'loading') fn();
         else document.addEventListener('DOMContentLoaded', fn);
     }
 
-    let toolsPanel = null;
-    let panelVisible = false;
+    let verktygspanel = null;
+    let panelSynlig = false;
 
-    // Crear el panel flotante
-    function createToolsPanel() {
-        if (document.getElementById('advancedToolsPanel')) return;
+    // Skapa den flytande panelen
+    function skapaVerktygspanel() {
+        if (document.getElementById('avanceradVerktygspanel')) return;
 
         const panelHTML = `
-            <div id="advancedToolsPanel" style="position: fixed; bottom: 20px; right: 20px; width: 350px; background: #1e293b; border-radius: 20px; border: 1px solid #475569; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 10000; backdrop-filter: blur(12px); transform: translateX(400px); opacity: 0; transition: all 0.3s ease; pointer-events: none;">
+            <div id="avanceradVerktygspanel" style="position: fixed; bottom: 20px; right: 20px; width: 350px; background: #1e293b; border-radius: 20px; border: 1px solid #475569; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 10000; backdrop-filter: blur(12px); transform: translateX(400px); opacity: 0; transition: all 0.3s ease; pointer-events: none;">
                 <div style="padding: 12px 16px; background: #0f172a; border-radius: 20px 20px 0 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155;">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <i class="fas fa-toolbox" style="color: #3b82f6;"></i>
-                        <span style="font-weight: 600;">Herramientas</span>
-                        <span id="toolsBadge" style="background: #3b82f6; padding: 2px 8px; border-radius: 30px; font-size: 0.7rem;">0</span>
+                        <span style="font-weight: 600;">Verktyg</span>
+                        <span id="verktygMärke" style="background: #3b82f6; padding: 2px 8px; border-radius: 30px; font-size: 0.7rem;">0</span>
                     </div>
-                    <button id="closeToolsBtn" style="background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 1.2rem;">&times;</button>
+                    <button id="stängVerktygBtn" style="background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 1.2rem;">&times;</button>
                 </div>
                 <div style="padding: 15px; max-height: 450px; overflow-y: auto;">
-                    <!-- Herramientas para un archivo -->
-                    <div id="singleTools" style="display: none;">
-                        <div style="font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 10px;">📄 Archivo seleccionado</div>
+                    <!-- Verktyg för en fil -->
+                    <div id="enkelVerktyg" style="display: none;">
+                        <div style="font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 10px;">📄 Vald fil</div>
                         <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">
-                            <button class="tool-action" data-action="download-single"><i class="fas fa-download"></i> Descargar</button>
-                            <button class="tool-action" data-action="rename-single"><i class="fas fa-edit"></i> Renombrar</button>
-                            <button class="tool-action" data-action="delete-single"><i class="fas fa-trash"></i> Eliminar</button>
-                            <button class="tool-action" data-action="details"><i class="fas fa-info-circle"></i> Detalles</button>
-                            <button class="tool-action" data-action="preview"><i class="fas fa-eye"></i> Vista previa</button>
-                            <button class="tool-action" data-action="copy-name"><i class="fas fa-copy"></i> Copiar nombre</button>
-                            <button class="tool-action" data-action="copy-link"><i class="fas fa-link"></i> Copiar enlace</button>
-                            <button class="tool-action" data-action="share"><i class="fas fa-share-alt"></i> Compartir</button>
-                            <button class="tool-action" data-action="qrcode"><i class="fas fa-qrcode"></i> QR</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="ladda-ner-enkel"><i class="fas fa-download"></i> Ladda ner</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="byt-namn-enkel"><i class="fas fa-edit"></i> Byt namn</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="ta-bort-enkel"><i class="fas fa-trash"></i> Ta bort</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="detaljer"><i class="fas fa-info-circle"></i> Detaljer</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="förhandsgranska"><i class="fas fa-eye"></i> Förhandsgranska</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="kopiera-namn"><i class="fas fa-copy"></i> Kopiera namn</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="kopiera-länk"><i class="fas fa-link"></i> Kopiera länk</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="dela"><i class="fas fa-share-alt"></i> Dela</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="qrkod"><i class="fas fa-qrcode"></i> QR</button>
                         </div>
                     </div>
-                    <!-- Herramientas para múltiples archivos -->
-                    <div id="multiTools" style="display: none;">
-                        <div style="font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 10px;">📦 <span id="multiCount">0</span> archivos seleccionados</div>
+                    <!-- Verktyg för flera filer -->
+                    <div id="fleraVerktyg" style="display: none;">
+                        <div style="font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 10px;">📦 <span id="fleraAntal">0</span> filer valda</div>
                         <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">
-                            <button class="tool-action" data-action="download-zip"><i class="fas fa-file-archive"></i> Descargar ZIP</button>
-                            <button class="tool-action" data-action="delete-multi"><i class="fas fa-trash"></i> Eliminar todos</button>
-                            <button class="tool-action" data-action="copy-names"><i class="fas fa-copy"></i> Copiar nombres</button>
-                            <button class="tool-action" data-action="move-folder"><i class="fas fa-folder-move"></i> Mover a...</button>
-                            <button class="tool-action" data-action="select-all"><i class="fas fa-check-double"></i> Seleccionar todo</button>
-                            <button class="tool-action" data-action="clear-selection"><i class="fas fa-times-circle"></i> Limpiar selección</button>
-                            <button class="tool-action" data-action="details-multi"><i class="fas fa-chart-simple"></i> Resumen</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="ladda-ner-zip"><i class="fas fa-file-archive"></i> Ladda ner ZIP</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="ta-bort-flera"><i class="fas fa-trash"></i> Ta bort alla</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="kopiera-namn-flera"><i class="fas fa-copy"></i> Kopiera namn</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="flytta-mapp"><i class="fas fa-folder-move"></i> Flytta till...</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="välj-alla"><i class="fas fa-check-double"></i> Välj alla</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="rensa-val"><i class="fas fa-times-circle"></i> Rensa val</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="detaljer-flera"><i class="fas fa-chart-simple"></i> Sammanfattning</button>
                         </div>
                     </div>
-                    <!-- Herramientas comunes -->
+                    <!-- Gemensamma verktyg -->
                     <div style="border-top: 1px solid #334155; padding-top: 15px;">
-                        <div style="font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 10px;">⚡ Generales</div>
+                        <div style="font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 10px;">⚡ Allmänna</div>
                         <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-                            <button class="tool-action" data-action="refresh"><i class="fas fa-sync-alt"></i> Refrescar</button>
-                            <button class="tool-action" data-action="folder-stats"><i class="fas fa-chart-bar"></i> Estadísticas</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="uppdatera"><i class="fas fa-sync-alt"></i> Uppdatera</button>
+                            <button class="verktyg-åtgärd" data-åtgärd="mappstatistik"><i class="fas fa-chart-bar"></i> Statistik</button>
                         </div>
                     </div>
                 </div>
                 <div style="padding: 8px; background: #0f172a; border-radius: 0 0 20px 20px; font-size: 0.65rem; text-align: center; color: #64748b;">
-                    <i class="fas fa-lightbulb"></i> Selecciona archivos con los checkboxes
+                    <i class="fas fa-lightbulb"></i> Välj filer med kryssrutorna
                 </div>
             </div>
         `;
         const div = document.createElement('div');
         div.innerHTML = panelHTML;
         document.body.appendChild(div.firstElementChild);
-        toolsPanel = document.getElementById('advancedToolsPanel');
+        verktygspanel = document.getElementById('avanceradVerktygspanel');
 
-        // Cerrar panel
-        document.getElementById('closeToolsBtn').addEventListener('click', () => {
-            if (toolsPanel) {
-                toolsPanel.style.transform = 'translateX(400px)';
-                toolsPanel.style.opacity = '0';
-                toolsPanel.style.pointerEvents = 'none';
-                panelVisible = false;
+        // Stäng panel
+        document.getElementById('stängVerktygBtn').addEventListener('click', () => {
+            if (verktygspanel) {
+                verktygspanel.style.transform = 'translateX(400px)';
+                verktygspanel.style.opacity = '0';
+                verktygspanel.style.pointerEvents = 'none';
+                panelSynlig = false;
             }
         });
 
-        // Aplicar estilos básicos a los botones (evitar conflictos)
-        document.querySelectorAll('.tool-action').forEach(btn => {
-            btn.style.background = '#0f172a';
-            btn.style.border = '1px solid #334155';
-            btn.style.padding = '6px 10px';
-            btn.style.borderRadius = '10px';
-            btn.style.color = 'white';
-            btn.style.cursor = 'pointer';
-            btn.style.display = 'inline-flex';
-            btn.style.alignItems = 'center';
-            btn.style.gap = '6px';
-            btn.style.fontSize = '0.75rem';
-            btn.addEventListener('click', (e) => {
+        // Applicera grundläggande stilar på knappar (undvik konflikter)
+        document.querySelectorAll('.verktyg-åtgärd').forEach(knapp => {
+            knapp.style.background = '#0f172a';
+            knapp.style.border = '1px solid #334155';
+            knapp.style.padding = '6px 10px';
+            knapp.style.borderRadius = '10px';
+            knapp.style.color = 'white';
+            knapp.style.cursor = 'pointer';
+            knapp.style.display = 'inline-flex';
+            knapp.style.alignItems = 'center';
+            knapp.style.gap = '6px';
+            knapp.style.fontSize = '0.75rem';
+            knapp.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const action = btn.getAttribute('data-action');
-                if (action) handleToolAction(action);
+                const åtgärd = knapp.getAttribute('data-åtgärd');
+                if (åtgärd) hanteraVerktygsÅtgärd(åtgärd);
             });
         });
     }
 
-    function showToolsPanel() {
-        if (!toolsPanel) return;
-        toolsPanel.style.transform = 'translateX(0)';
-        toolsPanel.style.opacity = '1';
-        toolsPanel.style.pointerEvents = 'auto';
-        panelVisible = true;
+    function visaVerktygspanel() {
+        if (!verktygspanel) return;
+        verktygspanel.style.transform = 'translateX(0)';
+        verktygspanel.style.opacity = '1';
+        verktygspanel.style.pointerEvents = 'auto';
+        panelSynlig = true;
     }
 
-    function hideToolsPanel() {
-        if (!toolsPanel) return;
-        toolsPanel.style.transform = 'translateX(400px)';
-        toolsPanel.style.opacity = '0';
-        toolsPanel.style.pointerEvents = 'none';
-        panelVisible = false;
+    function döljVerktygspanel() {
+        if (!verktygspanel) return;
+        verktygspanel.style.transform = 'translateX(400px)';
+        verktygspanel.style.opacity = '0';
+        verktygspanel.style.pointerEvents = 'none';
+        panelSynlig = false;
     }
 
-    function updateToolsPanel() {
-        if (!window.selectedFiles) return;
-        const count = window.selectedFiles.size;
-        const badge = document.getElementById('toolsBadge');
-        if (badge) badge.textContent = count;
+    function uppdateraVerktygspanel() {
+        if (!window.valdaFiler) return;
+        const antal = window.valdaFiler.size;
+        const märke = document.getElementById('verktygMärke');
+        if (märke) märke.textContent = antal;
 
-        const singleDiv = document.getElementById('singleTools');
-        const multiDiv = document.getElementById('multiTools');
-        const multiSpan = document.getElementById('multiCount');
+        const enkelDiv = document.getElementById('enkelVerktyg');
+        const fleraDiv = document.getElementById('fleraVerktyg');
+        const fleraSpan = document.getElementById('fleraAntal');
 
-        if (count === 0) {
-            hideToolsPanel();
+        if (antal === 0) {
+            döljVerktygspanel();
             return;
         }
-        showToolsPanel();
-        if (count === 1) {
-            if (singleDiv) singleDiv.style.display = 'block';
-            if (multiDiv) multiDiv.style.display = 'none';
+        visaVerktygspanel();
+        if (antal === 1) {
+            if (enkelDiv) enkelDiv.style.display = 'block';
+            if (fleraDiv) fleraDiv.style.display = 'none';
         } else {
-            if (singleDiv) singleDiv.style.display = 'none';
-            if (multiDiv) multiDiv.style.display = 'block';
-            if (multiSpan) multiSpan.textContent = count;
+            if (enkelDiv) enkelDiv.style.display = 'none';
+            if (fleraDiv) fleraDiv.style.display = 'block';
+            if (fleraSpan) fleraSpan.textContent = antal;
         }
     }
 
-    // Observar cambios en checkboxes usando MutationObserver (más robusto)
-    function observeCheckboxes() {
-        const fileGrid = document.getElementById('fileGrid');
-        if (!fileGrid) return;
+    // Bevaka förändringar i kryssrutor med MutationObserver (mer robust)
+    function bevakaKryssrutor() {
+        const filnät = document.getElementById('fileGrid');
+        if (!filnät) return;
 
-        const observer = new MutationObserver(() => {
-            // Re-evaluate selection after DOM changes (renderFiles actualiza los checkboxes)
-            if (window.selectedFiles) {
-                updateToolsPanel();
+        const observatör = new MutationObserver(() => {
+            // Utvärdera val på nytt efter DOM-förändringar (renderFiles uppdaterar kryssrutorna)
+            if (window.valdaFiler) {
+                uppdateraVerktygspanel();
             }
         });
-        observer.observe(fileGrid, { childList: true, subtree: true, attributes: true, attributeFilter: ['checked'] });
+        observatör.observe(filnät, { childList: true, subtree: true, attributes: true, attributeFilter: ['checked'] });
 
-        // También escuchar eventos click en los checkboxes (delegación)
+        // Lyssna även på klickhändelser på kryssrutor (delegering)
         document.body.addEventListener('change', (e) => {
             if (e.target && e.target.classList && e.target.classList.contains('checkbox')) {
-                setTimeout(() => updateToolsPanel(), 10);
+                setTimeout(() => uppdateraVerktygspanel(), 10);
             }
         });
     }
 
-    // ==================== ACCIONES ====================
-    async function handleToolAction(action) {
-        const selectedIds = window.selectedFiles ? Array.from(window.selectedFiles) : [];
-        if (selectedIds.length === 0 && !['refresh', 'folder-stats', 'select-all'].includes(action)) {
-            showToastMsg('No hay archivos seleccionados', true);
+    // ==================== ÅTGÄRDER ====================
+    async function hanteraVerktygsÅtgärd(åtgärd) {
+        const valdaId = window.valdaFiler ? Array.from(window.valdaFiler) : [];
+        if (valdaId.length === 0 && !['uppdatera', 'mappstatistik', 'välj-alla'].includes(åtgärd)) {
+            visaMeddelande('Inga filer är valda', true);
             return;
         }
-        switch (action) {
-            case 'download-single': if (selectedIds.length === 1) await downloadFileWrapper(selectedIds[0]); else showToastMsg('Selecciona un solo archivo', true); break;
-            case 'rename-single': if (selectedIds.length === 1) renameFileWrapper(selectedIds[0]); else showToastMsg('Selecciona un solo archivo', true); break;
-            case 'delete-single': if (selectedIds.length === 1) deleteFileWrapper(selectedIds[0]); else showToastMsg('Selecciona un solo archivo', true); break;
-            case 'delete-multi': deleteMultipleFiles(selectedIds); break;
-            case 'details': if (selectedIds.length === 1) showFileDetails(selectedIds[0]); else showToastMsg('Selecciona un solo archivo', true); break;
-            case 'details-multi': showMultipleDetails(selectedIds); break;
-            case 'preview': if (selectedIds.length === 1) previewFile(selectedIds[0]); else showToastMsg('Selecciona un solo archivo', true); break;
-            case 'copy-name': if (selectedIds.length === 1) copyFileName(selectedIds[0]); else showToastMsg('Selecciona un solo archivo', true); break;
-            case 'copy-names': copyMultipleNames(selectedIds); break;
-            case 'copy-link': if (selectedIds.length === 1) copyFileLink(selectedIds[0]); else showToastMsg('Selecciona un solo archivo', true); break;
-            case 'share': if (selectedIds.length === 1) shareFile(selectedIds[0]); else shareMultipleFiles(selectedIds); break;
-            case 'qrcode': if (selectedIds.length === 1) generateQR(selectedIds[0]); else showToastMsg('QR solo para un archivo', true); break;
-            case 'download-zip': downloadAsZip(selectedIds); break;
-            case 'move-folder': moveToFolder(selectedIds); break;
-            case 'select-all': selectAllFiles(); break;
-            case 'clear-selection': clearSelection(); break;
-            case 'refresh': if (window.loadFiles) window.loadFiles(); showToastMsg('Lista actualizada'); break;
-            case 'folder-stats': showFolderStats(); break;
-            default: console.warn('Acción desconocida:', action);
+        switch (åtgärd) {
+            case 'ladda-ner-enkel': if (valdaId.length === 1) await laddaNerFilWrapper(valdaId[0]); else visaMeddelande('Välj en enda fil', true); break;
+            case 'byt-namn-enkel': if (valdaId.length === 1) bytNamnFilWrapper(valdaId[0]); else visaMeddelande('Välj en enda fil', true); break;
+            case 'ta-bort-enkel': if (valdaId.length === 1) taBortFilWrapper(valdaId[0]); else visaMeddelande('Välj en enda fil', true); break;
+            case 'ta-bort-flera': taBortFleraFiler(valdaId); break;
+            case 'detaljer': if (valdaId.length === 1) visaFilDetaljer(valdaId[0]); else visaMeddelande('Välj en enda fil', true); break;
+            case 'detaljer-flera': visaFleraDetaljer(valdaId); break;
+            case 'förhandsgranska': if (valdaId.length === 1) förhandsgranskaFil(valdaId[0]); else visaMeddelande('Välj en enda fil', true); break;
+            case 'kopiera-namn': if (valdaId.length === 1) kopieraFilNamn(valdaId[0]); else visaMeddelande('Välj en enda fil', true); break;
+            case 'kopiera-namn-flera': kopieraFleraNamn(valdaId); break;
+            case 'kopiera-länk': if (valdaId.length === 1) kopieraFilLänk(valdaId[0]); else visaMeddelande('Välj en enda fil', true); break;
+            case 'dela': if (valdaId.length === 1) delaFil(valdaId[0]); else delaFleraFiler(valdaId); break;
+            case 'qrkod': if (valdaId.length === 1) genereraQR(valdaId[0]); else visaMeddelande('QR endast för en fil', true); break;
+            case 'ladda-ner-zip': laddaNerSomZip(valdaId); break;
+            case 'flytta-mapp': flyttaTillMapp(valdaId); break;
+            case 'välj-alla': väljAllaFiler(); break;
+            case 'rensa-val': rensaVal(); break;
+            case 'uppdatera': if (window.laddaFiler) window.laddaFiler(); visaMeddelande('Listan uppdaterad'); break;
+            case 'mappstatistik': visaMappStatistik(); break;
+            default: console.warn('Okänd åtgärd:', åtgärd);
         }
     }
 
-    // Wrappers que usan las funciones del HTML original
-    async function downloadFileWrapper(fileId) {
-        if (window.downloadFile) await window.downloadFile(fileId);
+    // Wrappers som använder funktionerna från original-HTML
+    async function laddaNerFilWrapper(filId) {
+        if (window.laddaNerFil) await window.laddaNerFil(filId);
         else {
-            const file = window.allFiles?.find(f => f.id === fileId);
-            if (file && file.url) {
+            const fil = window.allaFiler?.find(f => f.id === filId);
+            if (fil && fil.url) {
                 const a = document.createElement('a');
-                a.href = file.url;
-                a.download = file.filename;
+                a.href = fil.url;
+                a.download = fil.filename;
                 a.click();
-                showToastMsg(`Descargando: ${file.filename}`);
-            } else showToastMsg('No se puede descargar', true);
+                visaMeddelande(`Laddar ner: ${fil.filename}`);
+            } else visaMeddelande('Kan inte ladda ner', true);
         }
     }
-    function renameFileWrapper(fileId) { if (window.renameFilePrompt) window.renameFilePrompt(fileId); else showToastMsg('Renombrar no disponible', true); }
-    function deleteFileWrapper(fileId) { if (window.deleteSingleFile) window.deleteSingleFile(fileId); else if (confirm('Eliminar?')) window.database.ref(`shared_files/${window.currentFolder}/${fileId}`).remove(); }
-    async function deleteMultipleFiles(ids) { if (confirm(`Eliminar ${ids.length} archivos?`)) { for (const id of ids) await window.database.ref(`shared_files/${window.currentFolder}/${id}`).remove(); window.selectedFiles.clear(); if (window.loadFiles) window.loadFiles(); showToastMsg(`${ids.length} archivos eliminados`); } }
-    function showFileDetails(id) { const f = window.allFiles?.find(f => f.id === id); if (!f) return; showModal('Detalles', `<p><strong>Nombre:</strong> ${escapeHtml(f.filename)}</p><p><strong>Tamaño:</strong> ${formatSizeWrapper(f.size)}</p><p><strong>Fecha:</strong> ${new Date(f.date).toLocaleString()}</p><p><strong>URL:</strong> <a href="${f.url}" target="_blank">Abrir</a></p>`); }
-    function showMultipleDetails(ids) { const files = ids.map(id => window.allFiles?.find(f => f.id === id)).filter(f => f); const total = files.reduce((s,f)=>s+(f.size||0),0); let html = `<p><strong>${files.length} archivos</strong><br>Total: ${formatSizeWrapper(total)}</p><ul>`; files.forEach(f=>html+=`<li>${escapeHtml(f.filename)} (${formatSizeWrapper(f.size)})</li>`); html+=`</ul>`; showModal('Resumen', html); }
-    function previewFile(id) { const f = window.allFiles?.find(f=>f.id===id); if(!f)return; const ext = f.filename.split('.').pop().toLowerCase(); if(['jpg','jpeg','png','gif','webp','tif','tiff'].includes(ext)) showModal('Vista previa', `<img src="${f.url}" style="max-width:100%; max-height:60vh;">`); else if(['mp4','webm','mov'].includes(ext)) showModal('Vista previa', `<video controls src="${f.url}" style="max-width:100%"></video>`); else showToastMsg('Vista previa no disponible', true); }
-    function copyFileName(id) { const f = window.allFiles?.find(f=>f.id===id); if(f){ copyToClip(f.filename); showToastMsg(`Nombre copiado: ${f.filename}`); } }
-    function copyMultipleNames(ids) { const files = ids.map(id=>window.allFiles?.find(f=>f.id===id)).filter(f=>f); const names = files.map(f=>f.filename).join('\n'); copyToClip(names); showToastMsg(`${files.length} nombres copiados`); }
-    function copyFileLink(id) { const f = window.allFiles?.find(f=>f.id===id); if(f){ copyToClip(f.url); showToastMsg('Enlace copiado'); } }
-    async function shareFile(id) { const f = window.allFiles?.find(f=>f.id===id); if(f){ if(navigator.share) try{ await navigator.share({title:f.filename, url:f.url}); }catch(e){ copyToClip(f.url); showToastMsg('Enlace copiado'); } else { copyToClip(f.url); showToastMsg('Enlace copiado'); } } }
-    function shareMultipleFiles(ids) { const files = ids.map(id=>window.allFiles?.find(f=>f.id===id)).filter(f=>f); copyToClip(files.map(f=>f.filename).join(', ')); showToastMsg('Lista de nombres copiada'); }
-    function generateQR(id) { const f = window.allFiles?.find(f=>f.id===id); if(!f)return; const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(f.url)}`; showModal('Código QR', `<div style="text-align:center"><img src="${qrUrl}" style="background:white;padding:10px;border-radius:12px;"><p>${escapeHtml(f.filename)}</p></div>`); }
-    async function downloadAsZip(ids) { if(!ids.length)return; showToastMsg('Preparando ZIP...'); if(typeof JSZip==='undefined'){ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; s.onload=()=>performZip(ids); document.head.appendChild(s); } else performZip(ids); }
-    async function performZip(ids) { const files = ids.map(id=>window.allFiles?.find(f=>f.id===id)).filter(f=>f); const zip=new JSZip(); for(const f of files){ try{ const resp=await fetch(f.url); const blob=await resp.blob(); zip.file(f.filename, blob); }catch(e){} } const content=await zip.generateAsync({type:'blob'}); const a=document.createElement('a'); a.href=URL.createObjectURL(content); a.download=`archivos_${Date.now()}.zip`; a.click(); URL.revokeObjectURL(a.href); showToastMsg('ZIP descargado'); }
-    function moveToFolder(ids) { const folders = [{key:'general',name:'General'},{key:'documentos',name:'Documentos'},{key:'imagenes',name:'Imágenes'},{key:'videos',name:'Videos'},{key:'otros',name:'Otros'}]; if(window.customFolders) Array.from(window.customFolders).forEach(c=>folders.push({key:c,name:c})); let options=''; folders.forEach(f=>options+=`<option value="${f.key}">${escapeHtml(f.name)}</option>`); const modalContent=`<p>Mover ${ids.length} archivo(s) a:</p><select id="targetFolderSelect" style="width:100%; padding:8px; margin:12px 0;">${options}</select><div style="display:flex; gap:10px;"><button id="cancelMoveBtn">Cancelar</button><button id="confirmMoveBtn">Mover</button></div>`; const modal=showModal('Mover archivos', modalContent, false); document.getElementById('confirmMoveBtn').addEventListener('click', async()=>{ const target=document.getElementById('targetFolderSelect').value; if(!target)return; for(const id of ids){ const file=window.allFiles.find(f=>f.id===id); if(file){ const copy={...file, folder:target}; delete copy.id; await window.database.ref(`shared_files/${target}`).push(copy); await window.database.ref(`shared_files/${window.currentFolder}/${id}`).remove(); } } modal.remove(); if(window.overlay)window.overlay.remove(); showToastMsg(`${ids.length} archivo(s) movidos a ${target}`); if(window.loadFiles)window.loadFiles(); window.selectedFiles.clear(); updateToolsPanel(); }); document.getElementById('cancelMoveBtn').addEventListener('click',()=>{ modal.remove(); if(window.overlay)window.overlay.remove(); }); }
-    function selectAllFiles() { if(window.allFiles){ window.selectedFiles.clear(); window.allFiles.forEach(f=>window.selectedFiles.add(f.id)); if(window.renderFiles)window.renderFiles(); updateToolsPanel(); showToastMsg(`Seleccionados ${window.allFiles.length} archivos`); } }
-    function clearSelection() { window.selectedFiles.clear(); if(window.renderFiles)window.renderFiles(); updateToolsPanel(); showToastMsg('Selección limpiada'); }
-    function showFolderStats() { const files=window.allFiles||[]; const total=files.reduce((s,f)=>s+(f.size||0),0); const types={}; files.forEach(f=>{ const ext=f.filename.split('.').pop().toLowerCase()||'sin extensión'; types[ext]=(types[ext]||0)+1; }); let html=`<p>📁 Carpeta: ${window.currentFolder}</p><p>📄 Total: ${files.length}</p><p>💾 Tamaño: ${formatSizeWrapper(total)}</p><p>📊 Tipos:</p><ul>`; Object.entries(types).slice(0,15).forEach(([e,c])=>html+=`<li>${e}: ${c}</li>`); html+=`</ul>`; showModal('Estadísticas', html); }
+    function bytNamnFilWrapper(filId) { if (window.bytNamnFilPrompt) window.bytNamnFilPrompt(filId); else visaMeddelande('Byt namn inte tillgängligt', true); }
+    function taBortFilWrapper(filId) { if (window.taBortEnkelFil) window.taBortEnkelFil(filId); else if (confirm('Ta bort?')) window.database.ref(`shared_files/${window.aktuellMapp}/${filId}`).remove(); }
+    async function taBortFleraFiler(ids) { if (confirm(`Ta bort ${ids.length} filer?`)) { for (const id of ids) await window.database.ref(`shared_files/${window.aktuellMapp}/${id}`).remove(); window.valdaFiler.clear(); if (window.laddaFiler) window.laddaFiler(); visaMeddelande(`${ids.length} filer borttagna`); } }
+    function visaFilDetaljer(id) { const f = window.allaFiler?.find(f => f.id === id); if (!f) return; visaModal('Detaljer', `<p><strong>Namn:</strong> ${escapetext(f.filename)}</p><p><strong>Storlek:</strong> ${formateraStorlekWrapper(f.size)}</p><p><strong>Datum:</strong> ${new Date(f.date).toLocaleString()}</p><p><strong>URL:</strong> <a href="${f.url}" target="_blank">Öppna</a></p>`); }
+    function visaFleraDetaljer(ids) { const filer = ids.map(id => window.allaFiler?.find(f => f.id === id)).filter(f => f); const total = filer.reduce((s,f)=>s+(f.size||0),0); let html = `<p><strong>${filer.length} filer</strong><br>Totalt: ${formateraStorlekWrapper(total)}</p><ul>`; filer.forEach(f=>html+=`<li>${escapetext(f.filename)} (${formateraStorlekWrapper(f.size)})</li>`); html+=`</ul>`; visaModal('Sammanfattning', html); }
+    function förhandsgranskaFil(id) { const f = window.allaFiler?.find(f=>f.id===id); if(!f)return; const ext = f.filename.split('.').pop().toLowerCase(); if(['jpg','jpeg','png','gif','webp','tif','tiff'].includes(ext)) visaModal('Förhandsgranskning', `<img src="${f.url}" style="max-width:100%; max-height:60vh;">`); else if(['mp4','webm','mov'].includes(ext)) visaModal('Förhandsgranskning', `<video controls src="${f.url}" style="max-width:100%"></video>`); else visaMeddelande('Förhandsgranskning ej tillgänglig', true); }
+    function kopieraFilNamn(id) { const f = window.allaFiler?.find(f=>f.id===id); if(f){ kopieraTillUrklipp(f.filename); visaMeddelande(`Namn kopierat: ${f.filename}`); } }
+    function kopieraFleraNamn(ids) { const filer = ids.map(id=>window.allaFiler?.find(f=>f.id===id)).filter(f=>f); const namn = filer.map(f=>f.filename).join('\n'); kopieraTillUrklipp(namn); visaMeddelande(`${filer.length} namn kopierade`); }
+    function kopieraFilLänk(id) { const f = window.allaFiler?.find(f=>f.id===id); if(f){ kopieraTillUrklipp(f.url); visaMeddelande('Länk kopierad'); } }
+    async function delaFil(id) { const f = window.allaFiler?.find(f=>f.id===id); if(f){ if(navigator.share) try{ await navigator.share({title:f.filename, url:f.url}); }catch(e){ kopieraTillUrklipp(f.url); visaMeddelande('Länk kopierad'); } else { kopieraTillUrklipp(f.url); visaMeddelande('Länk kopierad'); } } }
+    function delaFleraFiler(ids) { const filer = ids.map(id=>window.allaFiler?.find(f=>f.id===id)).filter(f=>f); kopieraTillUrklipp(filer.map(f=>f.filename).join(', ')); visaMeddelande('Lista med namn kopierad'); }
+    function genereraQR(id) { const f = window.allaFiler?.find(f=>f.id===id); if(!f)return; const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(f.url)}`; visaModal('QR-kod', `<div style="text-align:center"><img src="${qrUrl}" style="background:white;padding:10px;border-radius:12px;"><p>${escapetext(f.filename)}</p></div>`); }
+    async function laddaNerSomZip(ids) { if(!ids.length)return; visaMeddelande('Förbereder ZIP...'); if(typeof JSZip==='undefined'){ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; s.onload=()=>utförZip(ids); document.head.appendChild(s); } else utförZip(ids); }
+    async function utförZip(ids) { const filer = ids.map(id=>window.allaFiler?.find(f=>f.id===id)).filter(f=>f); const zip=new JSZip(); for(const f of filer){ try{ const svar=await fetch(f.url); const blob=await svar.blob(); zip.file(f.filename, blob); }catch(e){} } const innehåll=await zip.generateAsync({type:'blob'}); const a=document.createElement('a'); a.href=URL.createObjectURL(innehåll); a.download=`filer_${Date.now()}.zip`; a.click(); URL.revokeObjectURL(a.href); visaMeddelande('ZIP nedladdad'); }
+    function flyttaTillMapp(ids) { const mappar = [{nyckel:'general',namn:'Allmän'},{nyckel:'dokument',namn:'Dokument'},{nyckel:'bilder',namn:'Bilder'},{nyckel:'videor',namn:'Videor'},{nyckel:'övrigt',namn:'Övrigt'}]; if(window.anpassadeMappar) Array.from(window.anpassadeMappar).forEach(c=>mappar.push({nyckel:c,namn:c})); let alternativ=''; mappar.forEach(m=>alternativ+=`<option value="${m.nyckel}">${escapetext(m.namn)}</option>`); const modalInnehåll=`<p>Flytta ${ids.length} fil(er) till:</p><select id="målMappVälj" style="width:100%; padding:8px; margin:12px 0;">${alternativ}</select><div style="display:flex; gap:10px;"><button id="avbrytFlyttaBtn">Avbryt</button><button id="bekräftaFlyttaBtn">Flytta</button></div>`; const modal=visaModal('Flytta filer', modalInnehåll, false); document.getElementById('bekräftaFlyttaBtn').addEventListener('click', async()=>{ const mål=document.getElementById('målMappVälj').value; if(!mål)return; for(const id of ids){ const fil=window.allaFiler.find(f=>f.id===id); if(fil){ const kopia={...fil, mapp:mål}; delete kopia.id; await window.database.ref(`shared_files/${mål}`).push(kopia); await window.database.ref(`shared_files/${window.aktuellMapp}/${id}`).remove(); } } modal.remove(); if(window.overlay)window.overlay.remove(); visaMeddelande(`${ids.length} fil(er) flyttade till ${mål}`); if(window.laddaFiler)window.laddaFiler(); window.valdaFiler.clear(); uppdateraVerktygspanel(); }); document.getElementById('avbrytFlyttaBtn').addEventListener('click',()=>{ modal.remove(); if(window.overlay)window.overlay.remove(); }); }
+    function väljAllaFiler() { if(window.allaFiler){ window.valdaFiler.clear(); window.allaFiler.forEach(f=>window.valdaFiler.add(f.id)); if(window.renderFiles)window.renderFiles(); uppdateraVerktygspanel(); visaMeddelande(`${window.allaFiler.length} filer valda`); } }
+    function rensaVal() { window.valdaFiler.clear(); if(window.renderFiles)window.renderFiles(); uppdateraVerktygspanel(); visaMeddelande('Val rensat'); }
+    function visaMappStatistik() { const filer=window.allaFiler||[]; const total=filer.reduce((s,f)=>s+(f.size||0),0); const typer={}; filer.forEach(f=>{ const ext=f.filename.split('.').pop().toLowerCase()||'ingen ändelse'; typer[ext]=(typer[ext]||0)+1; }); let html=`<p>📁 Mapp: ${window.aktuellMapp}</p><p>📄 Totalt: ${filer.length}</p><p>💾 Storlek: ${formateraStorlekWrapper(total)}</p><p>📊 Typer:</p><ul>`; Object.entries(typer).slice(0,15).forEach(([e,a])=>html+=`<li>${e}: ${a}</li>`); html+=`</ul>`; visaModal('Statistik', html); }
 
-    // Utilidades
-    function escapeHtml(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
-    function formatSizeWrapper(b){ if(!b)return '0 B'; const s=['B','KB','MB','GB','TB']; const i=Math.floor(Math.log(b)/Math.log(1024)); return parseFloat((b/Math.pow(1024,i)).toFixed(2))+' '+s[i]; }
-    function copyToClip(t){ navigator.clipboard.writeText(t).catch(()=>{ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }); }
-    function showToastMsg(msg, isErr=false){ if(window.showToast) window.showToast(msg, isErr); else alert(msg); }
-    let activeModal=null, overlay=null;
-    function showModal(title, content, autoClose=true){ if(activeModal){ activeModal.remove(); if(overlay)overlay.remove(); } overlay=document.createElement('div'); overlay.style.position='fixed'; overlay.style.top='0'; overlay.style.left='0'; overlay.style.right='0'; overlay.style.bottom='0'; overlay.style.background='rgba(0,0,0,0.7)'; overlay.style.zIndex='11000'; document.body.appendChild(overlay); const modal=document.createElement('div'); modal.style.position='fixed'; modal.style.top='50%'; modal.style.left='50%'; modal.style.transform='translate(-50%, -50%)'; modal.style.background='#1e293b'; modal.style.borderRadius='20px'; modal.style.padding='20px'; modal.style.zIndex='11001'; modal.style.minWidth='280px'; modal.style.maxWidth='450px'; modal.style.border='1px solid #475569'; modal.innerHTML=`<h3 style="margin-bottom:12px;color:#60a5fa;">${escapeHtml(title)}</h3><div>${content}</div><button id="modalCloseBtn" style="margin-top:16px; background:#3b82f6; border:none; padding:6px 12px; border-radius:8px; color:white;">Stäng</button>`; document.body.appendChild(modal); activeModal=modal; const close=()=>{ modal.remove(); overlay.remove(); activeModal=null; }; document.getElementById('modalCloseBtn').addEventListener('click', close); if(autoClose) overlay.addEventListener('click', close); return modal; }
+    // Hjälpfunktioner
+    function escapetext(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+    function formateraStorlekWrapper(b){ if(!b)return '0 B'; const s=['B','KB','MB','GB','TB']; const i=Math.floor(Math.log(b)/Math.log(1024)); return parseFloat((b/Math.pow(1024,i)).toFixed(2))+' '+s[i]; }
+    function kopieraTillUrklipp(t){ navigator.clipboard.writeText(t).catch(()=>{ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }); }
+    function visaMeddelande(medd, ärFel=false){ if(window.visaMeddelande) window.visaMeddelande(medd, ärFel); else alert(medd); }
+    let aktivModal=null, overlay=null;
+    function visaModal(titel, innehåll, autoStäng=true){ if(aktivModal){ aktivModal.remove(); if(overlay)overlay.remove(); } overlay=document.createElement('div'); overlay.style.position='fixed'; overlay.style.top='0'; overlay.style.left='0'; overlay.style.right='0'; overlay.style.bottom='0'; overlay.style.background='rgba(0,0,0,0.7)'; overlay.style.zIndex='11000'; document.body.appendChild(overlay); const modal=document.createElement('div'); modal.style.position='fixed'; modal.style.top='50%'; modal.style.left='50%'; modal.style.transform='translate(-50%, -50%)'; modal.style.background='#1e293b'; modal.style.borderRadius='20px'; modal.style.padding='20px'; modal.style.zIndex='11001'; modal.style.minWidth='280px'; modal.style.maxWidth='450px'; modal.style.border='1px solid #475569'; modal.innerHTML=`<h3 style="margin-bottom:12px;color:#60a5fa;">${escapetext(titel)}</h3><div>${innehåll}</div><button id="modalStängBtn" style="margin-top:16px; background:#3b82f6; border:none; padding:6px 12px; border-radius:8px; color:white;">Stäng</button>`; document.body.appendChild(modal); aktivModal=modal; const stäng=()=>{ modal.remove(); overlay.remove(); aktivModal=null; }; document.getElementById('modalStängBtn').addEventListener('click', stäng); if(autoStäng) overlay.addEventListener('click', stäng); return modal; }
 
-    // Inicialización
-    ready(() => {
-        createToolsPanel();
-        // Esperar a que window.selectedFiles esté definido (el script principal ya se ejecutó)
-        const checkInterval = setInterval(() => {
-            if (window.selectedFiles !== undefined && window.database && window.allFiles !== undefined) {
-                clearInterval(checkInterval);
-                observeCheckboxes();
-                updateToolsPanel();
-                console.log('✅ tools.js inicializado correctamente');
+    // Initiering
+    redo(() => {
+        skapaVerktygspanel();
+        // Vänta på att window.valdaFiler ska vara definierad (huvudskriptet har redan körts)
+        const kontrollIntervall = setInterval(() => {
+            if (window.valdaFiler !== undefined && window.database && window.allaFiler !== undefined) {
+                clearInterval(kontrollIntervall);
+                bevakaKryssrutor();
+                uppdateraVerktygspanel();
+                console.log('✅ verktyg.js initierad korrekt');
             }
         }, 200);
-        // Fallback después de 5 segundos
+        // Reserv efter 5 sekunder
         setTimeout(() => {
-            if (window.selectedFiles === undefined) {
-                console.warn('⚠️ tools.js: window.selectedFiles no encontrado, reintentando...');
-                if (typeof selectedFiles !== 'undefined') window.selectedFiles = selectedFiles;
+            if (window.valdaFiler === undefined) {
+                console.warn('⚠️ verktyg.js: window.valdaFiler hittades inte, försöker igen...');
+                if (typeof valdaFiler !== 'undefined') window.valdaFiler = valdaFiler;
                 if (typeof database !== 'undefined') window.database = database;
-                if (typeof allFiles !== 'undefined') window.allFiles = allFiles;
-                if (typeof currentFolder !== 'undefined') window.currentFolder = currentFolder;
-                if (typeof showToast !== 'undefined') window.showToast = showToast;
-                observeCheckboxes();
-                updateToolsPanel();
+                if (typeof allaFiler !== 'undefined') window.allaFiler = allaFiler;
+                if (typeof aktuellMapp !== 'undefined') window.aktuellMapp = aktuellMapp;
+                if (typeof visaMeddelande !== 'undefined') window.visaMeddelande = visaMeddelande;
+                bevakaKryssrutor();
+                uppdateraVerktygspanel();
             }
         }, 3000);
     });
