@@ -122,8 +122,13 @@
     }
 
     function uppdateraVerktygspanel() {
-        if (!window.valdaFiler) return;
-        const antal = window.valdaFiler.size;
+        // Använd både selectedFiles och valdaFiler för kompatibilitet
+        const selectedSet = window.selectedFiles || window.valdaFiler;
+        if (!selectedSet) {
+            console.warn('⚠️ Inga valda filer hittades');
+            return;
+        }
+        const antal = selectedSet.size;
         const märke = document.getElementById('verktygMärke');
         if (märke) märke.textContent = antal;
 
@@ -149,11 +154,13 @@
     // Bevaka förändringar i kryssrutor med MutationObserver (mer robust)
     function bevakaKryssrutor() {
         const filnät = document.getElementById('fileGrid');
-        if (!filnät) return;
+        if (!filnät) {
+            console.warn('⚠️ fileGrid hittades inte');
+            return;
+        }
 
         const observatör = new MutationObserver(() => {
-            // Utvärdera val på nytt efter DOM-förändringar (renderFiles uppdaterar kryssrutorna)
-            if (window.valdaFiler) {
+            if (window.selectedFiles || window.valdaFiler) {
                 uppdateraVerktygspanel();
             }
         });
@@ -165,11 +172,21 @@
                 setTimeout(() => uppdateraVerktygspanel(), 10);
             }
         });
+        
+        // Lyssna på click-händelser för att fånga upp kryssrutor som klickas
+        document.body.addEventListener('click', (e) => {
+            if (e.target && e.target.classList && e.target.classList.contains('checkbox')) {
+                setTimeout(() => uppdateraVerktygspanel(), 10);
+            }
+        });
+        
+        console.log('✅ Bevakning av kryssrutor aktiv');
     }
 
     // ==================== ÅTGÄRDER ====================
     async function hanteraVerktygsÅtgärd(åtgärd) {
-        const valdaId = window.valdaFiler ? Array.from(window.valdaFiler) : [];
+        const selectedSet = window.selectedFiles || window.valdaFiler;
+        const valdaId = selectedSet ? Array.from(selectedSet) : [];
         if (valdaId.length === 0 && !['uppdatera', 'mappstatistik', 'välj-alla'].includes(åtgärd)) {
             visaMeddelande('Inga filer är valda', true);
             return;
@@ -191,17 +208,29 @@
             case 'flytta-mapp': flyttaTillMapp(valdaId); break;
             case 'välj-alla': väljAllaFiler(); break;
             case 'rensa-val': rensaVal(); break;
-            case 'uppdatera': if (window.laddaFiler) window.laddaFiler(); visaMeddelande('Listan uppdaterad'); break;
+            case 'uppdatera': if (window.laddaFiler) window.laddaFiler(); else if (window.loadFiles) window.loadFiles(); visaMeddelande('Listan uppdaterad'); break;
             case 'mappstatistik': visaMappStatistik(); break;
             default: console.warn('Okänd åtgärd:', åtgärd);
         }
     }
 
+    // Hämta fil-array från window.allFiles eller window.allaFiler
+    function hämtaAllaFiler() {
+        return window.allFiles || window.allaFiler || [];
+    }
+
+    // Hämta currentFolder från window.currentFolder eller window.aktuellMapp
+    function hämtaAktuellMapp() {
+        return window.currentFolder || window.aktuellMapp || 'general';
+    }
+
     // Wrappers som använder funktionerna från original-HTML
     async function laddaNerFilWrapper(filId) {
         if (window.laddaNerFil) await window.laddaNerFil(filId);
+        else if (window.downloadFile) await window.downloadFile(filId);
         else {
-            const fil = window.allaFiler?.find(f => f.id === filId);
+            const filer = hämtaAllaFiler();
+            const fil = filer.find(f => f.id === filId);
             if (fil && fil.url) {
                 const a = document.createElement('a');
                 a.href = fil.url;
@@ -211,57 +240,288 @@
             } else visaMeddelande('Kan inte ladda ner', true);
         }
     }
-    function bytNamnFilWrapper(filId) { if (window.bytNamnFilPrompt) window.bytNamnFilPrompt(filId); else visaMeddelande('Byt namn inte tillgängligt', true); }
-    function taBortFilWrapper(filId) { if (window.taBortEnkelFil) window.taBortEnkelFil(filId); else if (confirm('Ta bort?')) window.database.ref(`shared_files/${window.aktuellMapp}/${filId}`).remove(); }
-    async function taBortFleraFiler(ids) { if (confirm(`Ta bort ${ids.length} filer?`)) { for (const id of ids) await window.database.ref(`shared_files/${window.aktuellMapp}/${id}`).remove(); window.valdaFiler.clear(); if (window.laddaFiler) window.laddaFiler(); visaMeddelande(`${ids.length} filer borttagna`); } }
-    function visaFilDetaljer(id) { const f = window.allaFiler?.find(f => f.id === id); if (!f) return; visaModal('Detaljer', `<p><strong>Namn:</strong> ${escapetext(f.filename)}</p><p><strong>Storlek:</strong> ${formateraStorlekWrapper(f.size)}</p><p><strong>Datum:</strong> ${new Date(f.date).toLocaleString()}</p><p><strong>URL:</strong> <a href="${f.url}" target="_blank">Öppna</a></p>`); }
-    function visaFleraDetaljer(ids) { const filer = ids.map(id => window.allaFiler?.find(f => f.id === id)).filter(f => f); const total = filer.reduce((s,f)=>s+(f.size||0),0); let html = `<p><strong>${filer.length} filer</strong><br>Totalt: ${formateraStorlekWrapper(total)}</p><ul>`; filer.forEach(f=>html+=`<li>${escapetext(f.filename)} (${formateraStorlekWrapper(f.size)})</li>`); html+=`</ul>`; visaModal('Sammanfattning', html); }
-    function förhandsgranskaFil(id) { const f = window.allaFiler?.find(f=>f.id===id); if(!f)return; const ext = f.filename.split('.').pop().toLowerCase(); if(['jpg','jpeg','png','gif','webp','tif','tiff'].includes(ext)) visaModal('Förhandsgranskning', `<img src="${f.url}" style="max-width:100%; max-height:60vh;">`); else if(['mp4','webm','mov'].includes(ext)) visaModal('Förhandsgranskning', `<video controls src="${f.url}" style="max-width:100%"></video>`); else visaMeddelande('Förhandsgranskning ej tillgänglig', true); }
-    function kopieraFilNamn(id) { const f = window.allaFiler?.find(f=>f.id===id); if(f){ kopieraTillUrklipp(f.filename); visaMeddelande(`Namn kopierat: ${f.filename}`); } }
-    function kopieraFleraNamn(ids) { const filer = ids.map(id=>window.allaFiler?.find(f=>f.id===id)).filter(f=>f); const namn = filer.map(f=>f.filename).join('\n'); kopieraTillUrklipp(namn); visaMeddelande(`${filer.length} namn kopierade`); }
-    function kopieraFilLänk(id) { const f = window.allaFiler?.find(f=>f.id===id); if(f){ kopieraTillUrklipp(f.url); visaMeddelande('Länk kopierad'); } }
-    async function delaFil(id) { const f = window.allaFiler?.find(f=>f.id===id); if(f){ if(navigator.share) try{ await navigator.share({title:f.filename, url:f.url}); }catch(e){ kopieraTillUrklipp(f.url); visaMeddelande('Länk kopierad'); } else { kopieraTillUrklipp(f.url); visaMeddelande('Länk kopierad'); } } }
-    function delaFleraFiler(ids) { const filer = ids.map(id=>window.allaFiler?.find(f=>f.id===id)).filter(f=>f); kopieraTillUrklipp(filer.map(f=>f.filename).join(', ')); visaMeddelande('Lista med namn kopierad'); }
-    function genereraQR(id) { const f = window.allaFiler?.find(f=>f.id===id); if(!f)return; const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(f.url)}`; visaModal('QR-kod', `<div style="text-align:center"><img src="${qrUrl}" style="background:white;padding:10px;border-radius:12px;"><p>${escapetext(f.filename)}</p></div>`); }
-    async function laddaNerSomZip(ids) { if(!ids.length)return; visaMeddelande('Förbereder ZIP...'); if(typeof JSZip==='undefined'){ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; s.onload=()=>utförZip(ids); document.head.appendChild(s); } else utförZip(ids); }
-    async function utförZip(ids) { const filer = ids.map(id=>window.allaFiler?.find(f=>f.id===id)).filter(f=>f); const zip=new JSZip(); for(const f of filer){ try{ const svar=await fetch(f.url); const blob=await svar.blob(); zip.file(f.filename, blob); }catch(e){} } const innehåll=await zip.generateAsync({type:'blob'}); const a=document.createElement('a'); a.href=URL.createObjectURL(innehåll); a.download=`filer_${Date.now()}.zip`; a.click(); URL.revokeObjectURL(a.href); visaMeddelande('ZIP nedladdad'); }
-    function flyttaTillMapp(ids) { const mappar = [{nyckel:'general',namn:'Allmän'},{nyckel:'dokument',namn:'Dokument'},{nyckel:'bilder',namn:'Bilder'},{nyckel:'videor',namn:'Videor'},{nyckel:'övrigt',namn:'Övrigt'}]; if(window.anpassadeMappar) Array.from(window.anpassadeMappar).forEach(c=>mappar.push({nyckel:c,namn:c})); let alternativ=''; mappar.forEach(m=>alternativ+=`<option value="${m.nyckel}">${escapetext(m.namn)}</option>`); const modalInnehåll=`<p>Flytta ${ids.length} fil(er) till:</p><select id="målMappVälj" style="width:100%; padding:8px; margin:12px 0;">${alternativ}</select><div style="display:flex; gap:10px;"><button id="avbrytFlyttaBtn">Avbryt</button><button id="bekräftaFlyttaBtn">Flytta</button></div>`; const modal=visaModal('Flytta filer', modalInnehåll, false); document.getElementById('bekräftaFlyttaBtn').addEventListener('click', async()=>{ const mål=document.getElementById('målMappVälj').value; if(!mål)return; for(const id of ids){ const fil=window.allaFiler.find(f=>f.id===id); if(fil){ const kopia={...fil, mapp:mål}; delete kopia.id; await window.database.ref(`shared_files/${mål}`).push(kopia); await window.database.ref(`shared_files/${window.aktuellMapp}/${id}`).remove(); } } modal.remove(); if(window.overlay)window.overlay.remove(); visaMeddelande(`${ids.length} fil(er) flyttade till ${mål}`); if(window.laddaFiler)window.laddaFiler(); window.valdaFiler.clear(); uppdateraVerktygspanel(); }); document.getElementById('avbrytFlyttaBtn').addEventListener('click',()=>{ modal.remove(); if(window.overlay)window.overlay.remove(); }); }
-    function väljAllaFiler() { if(window.allaFiler){ window.valdaFiler.clear(); window.allaFiler.forEach(f=>window.valdaFiler.add(f.id)); if(window.renderFiles)window.renderFiles(); uppdateraVerktygspanel(); visaMeddelande(`${window.allaFiler.length} filer valda`); } }
-    function rensaVal() { window.valdaFiler.clear(); if(window.renderFiles)window.renderFiles(); uppdateraVerktygspanel(); visaMeddelande('Val rensat'); }
-    function visaMappStatistik() { const filer=window.allaFiler||[]; const total=filer.reduce((s,f)=>s+(f.size||0),0); const typer={}; filer.forEach(f=>{ const ext=f.filename.split('.').pop().toLowerCase()||'ingen ändelse'; typer[ext]=(typer[ext]||0)+1; }); let html=`<p>📁 Mapp: ${window.aktuellMapp}</p><p>📄 Totalt: ${filer.length}</p><p>💾 Storlek: ${formateraStorlekWrapper(total)}</p><p>📊 Typer:</p><ul>`; Object.entries(typer).slice(0,15).forEach(([e,a])=>html+=`<li>${e}: ${a}</li>`); html+=`</ul>`; visaModal('Statistik', html); }
+    function bytNamnFilWrapper(filId) { 
+        if (window.bytNamnFilPrompt) window.bytNamnFilPrompt(filId); 
+        else if (window.renameFilePrompt) window.renameFilePrompt(filId);
+        else visaMeddelande('Byt namn inte tillgängligt', true); 
+    }
+    function taBortFilWrapper(filId) { 
+        if (window.taBortEnkelFil) window.taBortEnkelFil(filId); 
+        else if (window.deleteSingleFile) window.deleteSingleFile(filId);
+        else if (confirm('Ta bort?')) {
+            const mapp = hämtaAktuellMapp();
+            window.database.ref(`shared_files/${mapp}/${filId}`).remove();
+        } 
+    }
+    async function taBortFleraFiler(ids) { 
+        if (confirm(`Ta bort ${ids.length} filer?`)) { 
+            const mapp = hämtaAktuellMapp();
+            for (const id of ids) await window.database.ref(`shared_files/${mapp}/${id}`).remove(); 
+            const selectedSet = window.selectedFiles || window.valdaFiler;
+            if (selectedSet) selectedSet.clear();
+            if (window.laddaFiler) window.laddaFiler(); else if (window.loadFiles) window.loadFiles();
+            visaMeddelande(`${ids.length} filer borttagna`); 
+        } 
+    }
+    function visaFilDetaljer(id) { 
+        const filer = hämtaAllaFiler();
+        const f = filer.find(f => f.id === id); 
+        if (!f) return; 
+        visaModal('Detaljer', `<p><strong>Namn:</strong> ${escapetext(f.filename)}</p><p><strong>Storlek:</strong> ${formateraStorlekWrapper(f.size)}</p><p><strong>Datum:</strong> ${new Date(f.date).toLocaleString()}</p><p><strong>URL:</strong> <a href="${f.url}" target="_blank">Öppna</a></p>`); 
+    }
+    function visaFleraDetaljer(ids) { 
+        const filer = hämtaAllaFiler();
+        const valdaFiler = ids.map(id => filer.find(f => f.id === id)).filter(f => f); 
+        const total = valdaFiler.reduce((s,f)=>s+(f.size||0),0); 
+        let html = `<p><strong>${valdaFiler.length} filer</strong><br>Totalt: ${formateraStorlekWrapper(total)}</p><ul>`; 
+        valdaFiler.forEach(f=>html+=`<li>${escapetext(f.filename)} (${formateraStorlekWrapper(f.size)})</li>`); 
+        html+=`</ul>`; 
+        visaModal('Sammanfattning', html); 
+    }
+    function förhandsgranskaFil(id) { 
+        const filer = hämtaAllaFiler();
+        const f = filer.find(f=>f.id===id); 
+        if(!f)return; 
+        const ext = f.filename.split('.').pop().toLowerCase(); 
+        if(['jpg','jpeg','png','gif','webp','tif','tiff'].includes(ext)) 
+            visaModal('Förhandsgranskning', `<img src="${f.url}" style="max-width:100%; max-height:60vh;">`); 
+        else if(['mp4','webm','mov'].includes(ext)) 
+            visaModal('Förhandsgranskning', `<video controls src="${f.url}" style="max-width:100%"></video>`); 
+        else visaMeddelande('Förhandsgranskning ej tillgänglig', true); 
+    }
+    function kopieraFilNamn(id) { 
+        const filer = hämtaAllaFiler();
+        const f = filer.find(f=>f.id===id); 
+        if(f){ kopieraTillUrklipp(f.filename); visaMeddelande(`Namn kopierat: ${f.filename}`); } 
+    }
+    function kopieraFleraNamn(ids) { 
+        const filer = hämtaAllaFiler();
+        const valdaFiler = ids.map(id=>filer.find(f=>f.id===id)).filter(f=>f); 
+        const namn = valdaFiler.map(f=>f.filename).join('\n'); 
+        kopieraTillUrklipp(namn); 
+        visaMeddelande(`${valdaFiler.length} namn kopierade`); 
+    }
+    function kopieraFilLänk(id) { 
+        const filer = hämtaAllaFiler();
+        const f = filer.find(f=>f.id===id); 
+        if(f){ kopieraTillUrklipp(f.url); visaMeddelande('Länk kopierad'); } 
+    }
+    async function delaFil(id) { 
+        const filer = hämtaAllaFiler();
+        const f = filer.find(f=>f.id===id); 
+        if(f){ 
+            if(navigator.share) try{ await navigator.share({title:f.filename, url:f.url}); }
+            catch(e){ kopieraTillUrklipp(f.url); visaMeddelande('Länk kopierad'); } 
+            else { kopieraTillUrklipp(f.url); visaMeddelande('Länk kopierad'); } 
+        } 
+    }
+    function delaFleraFiler(ids) { 
+        const filer = hämtaAllaFiler();
+        const valdaFiler = ids.map(id=>filer.find(f=>f.id===id)).filter(f=>f); 
+        kopieraTillUrklipp(valdaFiler.map(f=>f.filename).join(', ')); 
+        visaMeddelande('Lista med namn kopierad'); 
+    }
+    function genereraQR(id) { 
+        const filer = hämtaAllaFiler();
+        const f = filer.find(f=>f.id===id); 
+        if(!f)return; 
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(f.url)}`; 
+        visaModal('QR-kod', `<div style="text-align:center"><img src="${qrUrl}" style="background:white;padding:10px;border-radius:12px;"><p>${escapetext(f.filename)}</p></div>`); 
+    }
+    async function laddaNerSomZip(ids) { 
+        if(!ids.length)return; 
+        visaMeddelande('Förbereder ZIP...'); 
+        if(typeof JSZip==='undefined'){ 
+            const s=document.createElement('script'); 
+            s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; 
+            s.onload=()=>utförZip(ids); 
+            document.head.appendChild(s); 
+        } else utförZip(ids); 
+    }
+    async function utförZip(ids) { 
+        const filer = hämtaAllaFiler();
+        const valdaFiler = ids.map(id=>filer.find(f=>f.id===id)).filter(f=>f); 
+        const zip=new JSZip(); 
+        for(const f of valdaFiler){ 
+            try{ 
+                const svar=await fetch(f.url); 
+                const blob=await svar.blob(); 
+                zip.file(f.filename, blob); 
+            }catch(e){} 
+        } 
+        const innehåll=await zip.generateAsync({type:'blob'}); 
+        const a=document.createElement('a'); 
+        a.href=URL.createObjectURL(innehåll); 
+        a.download=`filer_${Date.now()}.zip`; 
+        a.click(); 
+        URL.revokeObjectURL(a.href); 
+        visaMeddelande('ZIP nedladdad'); 
+    }
+    function flyttaTillMapp(ids) { 
+        const mappar = [{nyckel:'general',namn:'Allmän'},{nyckel:'documentos',namn:'Dokument'},{nyckel:'imagenes',namn:'Bilder'},{nyckel:'videos',namn:'Videor'},{nyckel:'otros',namn:'Övrigt'}]; 
+        if(window.anpassadeMappar || window.customFolders) {
+            const folders = window.customFolders || window.anpassadeMappar;
+            if(folders) Array.from(folders).forEach(c=>mappar.push({nyckel:c,namn:c}));
+        }
+        let alternativ=''; 
+        mappar.forEach(m=>alternativ+=`<option value="${m.nyckel}">${escapetext(m.namn)}</option>`); 
+        const modalInnehåll=`<p>Flytta ${ids.length} fil(er) till:</p><select id="målMappVälj" style="width:100%; padding:8px; margin:12px 0;">${alternativ}</select><div style="display:flex; gap:10px;"><button id="avbrytFlyttaBtn">Avbryt</button><button id="bekräftaFlyttaBtn">Flytta</button></div>`; 
+        const modal=visaModal('Flytta filer', modalInnehåll, false); 
+        document.getElementById('bekräftaFlyttaBtn').addEventListener('click', async()=>{ 
+            const mål=document.getElementById('målMappVälj').value; 
+            if(!mål)return;
+            const filer = hämtaAllaFiler();
+            const mapp = hämtaAktuellMapp();
+            for(const id of ids){ 
+                const fil=filer.find(f=>f.id===id); 
+                if(fil){ 
+                    const kopia={...fil, folder:mål}; 
+                    delete kopia.id; 
+                    await window.database.ref(`shared_files/${mål}`).push(kopia); 
+                    await window.database.ref(`shared_files/${mapp}/${id}`).remove(); 
+                } 
+            } 
+            modal.remove(); 
+            if(window.overlay)window.overlay.remove(); 
+            visaMeddelande(`${ids.length} fil(er) flyttade till ${mål}`); 
+            if(window.laddaFiler)window.laddaFiler(); else if(window.loadFiles)window.loadFiles();
+            const selectedSet = window.selectedFiles || window.valdaFiler;
+            if(selectedSet) selectedSet.clear(); 
+            uppdateraVerktygspanel(); 
+        }); 
+        document.getElementById('avbrytFlyttaBtn').addEventListener('click',()=>{ 
+            modal.remove(); 
+            if(window.overlay)window.overlay.remove(); 
+        }); 
+    }
+    function väljAllaFiler() { 
+        const filer = hämtaAllaFiler();
+        if(filer.length > 0){ 
+            const selectedSet = window.selectedFiles || window.valdaFiler;
+            if(selectedSet) {
+                selectedSet.clear(); 
+                filer.forEach(f=>selectedSet.add(f.id)); 
+                if(window.renderFiles)window.renderFiles(); 
+                uppdateraVerktygspanel(); 
+                visaMeddelande(`${filer.length} filer valda`);
+            }
+        } 
+    }
+    function rensaVal() { 
+        const selectedSet = window.selectedFiles || window.valdaFiler;
+        if(selectedSet) {
+            selectedSet.clear(); 
+            if(window.renderFiles)window.renderFiles(); 
+            uppdateraVerktygspanel(); 
+            visaMeddelande('Val rensat');
+        }
+    }
+    function visaMappStatistik() { 
+        const filer = hämtaAllaFiler();
+        const mapp = hämtaAktuellMapp();
+        const total = filer.reduce((s,f)=>s+(f.size||0),0); 
+        const typer={}; 
+        filer.forEach(f=>{ 
+            const ext=f.filename.split('.').pop().toLowerCase()||'ingen ändelse'; 
+            typer[ext]=(typer[ext]||0)+1; 
+        }); 
+        let html=`<p>📁 Mapp: ${mapp}</p><p>📄 Totalt: ${filer.length}</p><p>💾 Storlek: ${formateraStorlekWrapper(total)}</p><p>📊 Typer:</p><ul>`; 
+        Object.entries(typer).slice(0,15).forEach(([e,a])=>html+=`<li>${e}: ${a}</li>`); 
+        html+=`</ul>`; 
+        visaModal('Statistik', html); 
+    }
 
     // Hjälpfunktioner
     function escapetext(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
     function formateraStorlekWrapper(b){ if(!b)return '0 B'; const s=['B','KB','MB','GB','TB']; const i=Math.floor(Math.log(b)/Math.log(1024)); return parseFloat((b/Math.pow(1024,i)).toFixed(2))+' '+s[i]; }
     function kopieraTillUrklipp(t){ navigator.clipboard.writeText(t).catch(()=>{ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }); }
-    function visaMeddelande(medd, ärFel=false){ if(window.visaMeddelande) window.visaMeddelande(medd, ärFel); else alert(medd); }
+    function visaMeddelande(medd, ärFel=false){ 
+        if(window.visaMeddelande) window.visaMeddelande(medd, ärFel); 
+        else if(window.showToast) window.showToast(medd, ärFel);
+        else alert(medd); 
+    }
     let aktivModal=null, overlay=null;
-    function visaModal(titel, innehåll, autoStäng=true){ if(aktivModal){ aktivModal.remove(); if(overlay)overlay.remove(); } overlay=document.createElement('div'); overlay.style.position='fixed'; overlay.style.top='0'; overlay.style.left='0'; overlay.style.right='0'; overlay.style.bottom='0'; overlay.style.background='rgba(0,0,0,0.7)'; overlay.style.zIndex='11000'; document.body.appendChild(overlay); const modal=document.createElement('div'); modal.style.position='fixed'; modal.style.top='50%'; modal.style.left='50%'; modal.style.transform='translate(-50%, -50%)'; modal.style.background='#1e293b'; modal.style.borderRadius='20px'; modal.style.padding='20px'; modal.style.zIndex='11001'; modal.style.minWidth='280px'; modal.style.maxWidth='450px'; modal.style.border='1px solid #475569'; modal.innerHTML=`<h3 style="margin-bottom:12px;color:#60a5fa;">${escapetext(titel)}</h3><div>${innehåll}</div><button id="modalStängBtn" style="margin-top:16px; background:#3b82f6; border:none; padding:6px 12px; border-radius:8px; color:white;">Stäng</button>`; document.body.appendChild(modal); aktivModal=modal; const stäng=()=>{ modal.remove(); overlay.remove(); aktivModal=null; }; document.getElementById('modalStängBtn').addEventListener('click', stäng); if(autoStäng) overlay.addEventListener('click', stäng); return modal; }
+    function visaModal(titel, innehåll, autoStäng=true){ 
+        if(aktivModal){ aktivModal.remove(); if(overlay)overlay.remove(); } 
+        overlay=document.createElement('div'); 
+        overlay.style.position='fixed'; 
+        overlay.style.top='0'; 
+        overlay.style.left='0'; 
+        overlay.style.right='0'; 
+        overlay.style.bottom='0'; 
+        overlay.style.background='rgba(0,0,0,0.7)'; 
+        overlay.style.zIndex='11000'; 
+        document.body.appendChild(overlay); 
+        const modal=document.createElement('div'); 
+        modal.style.position='fixed'; 
+        modal.style.top='50%'; 
+        modal.style.left='50%'; 
+        modal.style.transform='translate(-50%, -50%)'; 
+        modal.style.background='#1e293b'; 
+        modal.style.borderRadius='20px'; 
+        modal.style.padding='20px'; 
+        modal.style.zIndex='11001'; 
+        modal.style.minWidth='280px'; 
+        modal.style.maxWidth='450px'; 
+        modal.style.border='1px solid #475569'; 
+        modal.innerHTML=`<h3 style="margin-bottom:12px;color:#60a5fa;">${escapetext(titel)}</h3><div>${innehåll}</div><button id="modalStängBtn" style="margin-top:16px; background:#3b82f6; border:none; padding:6px 12px; border-radius:8px; color:white;">Stäng</button>`; 
+        document.body.appendChild(modal); 
+        aktivModal=modal; 
+        const stäng=()=>{ modal.remove(); overlay.remove(); aktivModal=null; }; 
+        document.getElementById('modalStängBtn').addEventListener('click', stäng); 
+        if(autoStäng) overlay.addEventListener('click', stäng); 
+        return modal; 
+    }
 
     // Initiering
     redo(() => {
         skapaVerktygspanel();
-        // Vänta på att window.valdaFiler ska vara definierad (huvudskriptet har redan körts)
+        
+        // Vänta på att selectedFiles ska vara definierad
+        let försök = 0;
         const kontrollIntervall = setInterval(() => {
-            if (window.valdaFiler !== undefined && window.database && window.allaFiler !== undefined) {
+            försök++;
+            const harSelected = (window.selectedFiles !== undefined) || (window.valdaFiler !== undefined);
+            const harDatabase = window.database !== undefined;
+            const harFiler = (window.allFiles !== undefined) || (window.allaFiler !== undefined);
+            
+            if (harSelected && harDatabase && harFiler) {
                 clearInterval(kontrollIntervall);
+                // Synkronisera valdaFiler med selectedFiles
+                if (window.selectedFiles && !window.valdaFiler) {
+                    window.valdaFiler = window.selectedFiles;
+                } else if (window.valdaFiler && !window.selectedFiles) {
+                    window.selectedFiles = window.valdaFiler;
+                }
                 bevakaKryssrutor();
-                uppdateraVerktygspanel();
+                setTimeout(uppdateraVerktygspanel, 100);
                 console.log('✅ verktyg.js initierad korrekt');
+            } else if (försök > 25) { // 5 sekunder
+                clearInterval(kontrollIntervall);
+                console.warn('⚠️ verktyg.js: Kunde inte hitta alla nödvändiga variabler');
+                // Försök med fallback
+                if (typeof selectedFiles !== 'undefined' && !window.selectedFiles) {
+                    window.selectedFiles = selectedFiles;
+                    window.valdaFiler = selectedFiles;
+                }
+                if (typeof allFiles !== 'undefined' && !window.allFiles) {
+                    window.allFiles = allFiles;
+                    window.allaFiler = allFiles;
+                }
+                if (typeof currentFolder !== 'undefined' && !window.currentFolder) {
+                    window.currentFolder = currentFolder;
+                    window.aktuellMapp = currentFolder;
+                }
+                if (typeof database !== 'undefined' && !window.database) {
+                    window.database = database;
+                }
+                if (typeof showToast !== 'undefined' && !window.showToast) {
+                    window.showToast = showToast;
+                    window.visaMeddelande = showToast;
+                }
+                bevakaKryssrutor();
+                setTimeout(uppdateraVerktygspanel, 200);
             }
         }, 200);
-        // Reserv efter 5 sekunder
-        setTimeout(() => {
-            if (window.valdaFiler === undefined) {
-                console.warn('⚠️ verktyg.js: window.valdaFiler hittades inte, försöker igen...');
-                if (typeof valdaFiler !== 'undefined') window.valdaFiler = valdaFiler;
-                if (typeof database !== 'undefined') window.database = database;
-                if (typeof allaFiler !== 'undefined') window.allaFiler = allaFiler;
-                if (typeof aktuellMapp !== 'undefined') window.aktuellMapp = aktuellMapp;
-                if (typeof visaMeddelande !== 'undefined') window.visaMeddelande = visaMeddelande;
-                bevakaKryssrutor();
-                uppdateraVerktygspanel();
-            }
-        }, 3000);
     });
 })();
