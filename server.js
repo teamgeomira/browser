@@ -1,6 +1,5 @@
-// server.js - Servidor COMPLETO (Sirve index.html + API)
+// server.js - Servidor COMPLETO (CORREGIDO)
 // EJECUTAR: node server.js
-// Abre automáticamente el navegador con index.html
 
 const express = require('express');
 const cors = require('cors');
@@ -20,8 +19,6 @@ const PORT = 3001;
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
-
-// Servir archivos estáticos (index.html, tools.js, sync.js)
 app.use(express.static(__dirname));
 
 // ============================================================
@@ -32,24 +29,27 @@ const INDEX_PATH = path.join(__dirname, 'index.html');
 if (!fs.existsSync(INDEX_PATH)) {
     console.error('❌ ERROR: No se encuentra index.html');
     console.error(`📁 Buscado en: ${INDEX_PATH}`);
-    console.error('📥 Descárgalo de: https://raw.githubusercontent.com/teamgeomira/browser/main/index.html');
     process.exit(1);
 }
 console.log('✅ index.html encontrado');
 
 // ============================================================
-//  RUTAS
+//  RUTAS (CORREGIDAS)
 // ============================================================
 
+// Ruta principal
 app.get('/', (req, res) => {
     res.sendFile(INDEX_PATH);
 });
 
-app.get('*', (req, res) => {
-    if (req.path.startsWith('/api/')) {
-        return res.status(404).json({ error: 'API no encontrada' });
+// Ruta para archivos estáticos - CORREGIDO
+app.get('/:file', (req, res) => {
+    const filePath = path.join(__dirname, req.params.file);
+    if (fs.existsSync(filePath)) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send('Archivo no encontrado');
     }
-    res.sendFile(INDEX_PATH);
 });
 
 // ============================================================
@@ -765,7 +765,7 @@ app.get('/api/sync/events', (req, res) => {
 });
 
 // ============================================================
-//  INICIAR SERVIDOR Y ABRIR NAVEGADOR
+//  INICIAR SERVIDOR
 // ============================================================
 
 function openBrowser(url) {
@@ -782,7 +782,7 @@ function openBrowser(url) {
 const server = app.listen(PORT, () => {
     const url = `http://localhost:${PORT}`;
     console.log('═══════════════════════════════════════════════════════════');
-    console.log('🔄 Sincronizador COMPLETO');
+    console.log('🔄 Sincronizador COMPLETO (CORREGIDO)');
     console.log('═══════════════════════════════════════════════════════════');
     console.log(`📍 Puerto: ${PORT}`);
     console.log(`🌐 Abriendo: ${url}`);
@@ -795,7 +795,6 @@ const server = app.listen(PORT, () => {
     console.log('✅ Monitorea cambios en tiempo real');
     console.log('═══════════════════════════════════════════════════════════\n');
     
-    // Abrir navegador después de 1 segundo
     setTimeout(() => openBrowser(url), 1000);
 });
 
