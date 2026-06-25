@@ -1,5 +1,5 @@
-// sync.js - Sincronizador COMPLETO FUSIONADO
-// Incluye: Panel de sincronización + Gestor de carpetas
+// sync.js - Sincronizador COMPLETO CON GESTOR DE CARPETAS VISIBLE
+// Incluye: Panel de sincronización + Gestor de carpetas con botones
 // Carpetas y archivos sincronizados se muestran en VERDE
 
 (function() {
@@ -20,11 +20,12 @@
         reconnectAttempts: 0,
         maxReconnectAttempts: 5,
         syncFolders: [], // Array de carpetas guardadas
-        currentFolderIndex: -1
+        currentFolderIndex: -1,
+        activeSyncs: {} // Para rastrear sincronizaciones activas
     };
 
     // ============================================================
-    //  FUNCIÓN PARA NORMALIZAR RUTAS LOCALES
+    //  FUNCIONES DE UTILIDAD
     // ============================================================
 
     function normalizeLocalPath(path) {
@@ -33,10 +34,6 @@
         cleaned = cleaned.replace(/\/+/g, '/');
         return cleaned;
     }
-
-    // ============================================================
-    //  FUNCIONES DE UTILIDAD
-    // ============================================================
 
     function escapeHtml(str) {
         if (!str) return '';
@@ -70,7 +67,7 @@
     }
 
     // ============================================================
-    //  CREAR INTERFAZ COMPLETA (FUSIONADA)
+    //  CREAR INTERFAZ COMPLETA (CON TODAS LAS HERRAMIENTAS)
     // ============================================================
 
     function createSyncUI() {
@@ -110,6 +107,9 @@
             .folder-item.synced i {
                 color: #10b981 !important;
             }
+            .folder-item.synced .folder-status {
+                color: #10b981 !important;
+            }
             .file-card.synced {
                 border-color: #10b981 !important;
                 background: rgba(16, 185, 129, 0.05);
@@ -126,6 +126,62 @@
                 color: #10b981;
                 margin-left: 6px;
             }
+            .folder-item {
+                transition: all 0.3s ease;
+            }
+            .folder-item:hover {
+                background: #334155 !important;
+            }
+            .folder-actions {
+                display: flex;
+                gap: 4px;
+                flex-shrink: 0;
+            }
+            .folder-actions button {
+                background: none;
+                border: none;
+                cursor: pointer;
+                padding: 4px 8px;
+                border-radius: 6px;
+                font-size: 0.75rem;
+                transition: all 0.2s;
+            }
+            .folder-actions .btn-sync-folder {
+                color: #10b981;
+            }
+            .folder-actions .btn-sync-folder:hover {
+                background: rgba(16, 185, 129, 0.2);
+            }
+            .folder-actions .btn-stop-folder {
+                color: #fca5a5;
+            }
+            .folder-actions .btn-stop-folder:hover {
+                background: rgba(239, 68, 68, 0.2);
+            }
+            .folder-actions .btn-remove-folder {
+                color: #64748b;
+            }
+            .folder-actions .btn-remove-folder:hover {
+                background: rgba(239, 68, 68, 0.2);
+                color: #ef4444;
+            }
+            .folder-progress-bar {
+                background: #334155;
+                border-radius: 10px;
+                height: 4px;
+                overflow: hidden;
+                margin-top: 6px;
+            }
+            .folder-progress-bar .progress-fill {
+                height: 100%;
+                background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+                transition: width 0.3s ease;
+                width: 0%;
+            }
+            #addFolderModal input:focus {
+                border-color: #3b82f6;
+                outline: none;
+            }
         `;
         document.head.appendChild(style);
 
@@ -136,8 +192,8 @@
             position: fixed;
             bottom: 80px;
             right: 20px;
-            width: 480px;
-            max-height: 680px;
+            width: 520px;
+            max-height: 700px;
             background: #1e293b;
             border: 1px solid #475569;
             border-radius: 16px;
@@ -283,21 +339,26 @@
                 </div>
             </div>
 
-            <!-- Contenido: Pestaña Carpetas -->
+            <!-- Contenido: Pestaña Carpetas (CON TODAS LAS HERRAMIENTAS) -->
             <div id="foldersTabContent" style="display:none;">
-                <div style="display:flex;gap:8px;margin-bottom:10px;">
-                    <button id="addFolderBtn" style="flex:1;padding:8px;border-radius:10px;border:none;background:#3b82f6;color:white;cursor:pointer;font-weight:600;font-size:0.8rem;font-family:'Inter',sans-serif;" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">
+                <!-- Barra de herramientas de carpetas -->
+                <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+                    <button id="addFolderBtn" style="flex:1;min-width:100px;padding:8px 12px;border-radius:10px;border:none;background:#3b82f6;color:white;cursor:pointer;font-weight:600;font-size:0.8rem;font-family:'Inter',sans-serif;transition:all 0.2s;" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">
                         <i class="fas fa-plus"></i> Agregar Carpeta
                     </button>
-                    <button id="syncAllFoldersBtn" style="flex:1;padding:8px;border-radius:10px;border:none;background:#8b5cf6;color:white;cursor:pointer;font-weight:600;font-size:0.8rem;font-family:'Inter',sans-serif;" onmouseover="this.style.background='#7c3aed'" onmouseout="this.style.background='#8b5cf6'">
+                    <button id="syncAllFoldersBtn" style="flex:1;min-width:100px;padding:8px 12px;border-radius:10px;border:none;background:#8b5cf6;color:white;cursor:pointer;font-weight:600;font-size:0.8rem;font-family:'Inter',sans-serif;transition:all 0.2s;" onmouseover="this.style.background='#7c3aed'" onmouseout="this.style.background='#8b5cf6'">
                         <i class="fas fa-play"></i> Sincronizar Todas
                     </button>
-                    <button id="stopAllFoldersBtn" style="flex:1;padding:8px;border-radius:10px;border:none;background:#7f1d1d;color:#fca5a5;cursor:pointer;font-weight:600;font-size:0.8rem;font-family:'Inter',sans-serif;display:none;" onmouseover="this.style.background='#991b1b'" onmouseout="this.style.background='#7f1d1d'">
-                        <i class="fas fa-stop"></i> Detener
+                    <button id="stopAllFoldersBtn" style="flex:1;min-width:100px;padding:8px 12px;border-radius:10px;border:none;background:#7f1d1d;color:#fca5a5;cursor:pointer;font-weight:600;font-size:0.8rem;font-family:'Inter',sans-serif;display:none;transition:all 0.2s;" onmouseover="this.style.background='#991b1b'" onmouseout="this.style.background='#7f1d1d'">
+                        <i class="fas fa-stop"></i> Detener Todas
+                    </button>
+                    <button id="clearFoldersBtn" style="flex:1;min-width:80px;padding:8px 12px;border-radius:10px;border:none;background:#7f1d1d;color:#fca5a5;cursor:pointer;font-weight:600;font-size:0.8rem;font-family:'Inter',sans-serif;transition:all 0.2s;" onmouseover="this.style.background='#991b1b'" onmouseout="this.style.background='#7f1d1d'">
+                        <i class="fas fa-trash"></i> Limpiar
                     </button>
                 </div>
 
-                <div id="foldersListContainer" style="max-height:300px;overflow-y:auto;">
+                <!-- Lista de carpetas -->
+                <div id="foldersListContainer" style="max-height:320px;overflow-y:auto;margin-bottom:10px;">
                     <div id="foldersList" style="display:flex;flex-direction:column;gap:6px;">
                         <div style="text-align:center;color:#64748b;padding:30px 10px;font-size:0.85rem;">
                             <i class="fas fa-folder-open" style="font-size:2rem;display:block;margin-bottom:10px;"></i>
@@ -306,12 +367,20 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Resumen de carpetas -->
+                <div style="display:flex;gap:12px;padding:10px;background:#0f172a;border-radius:10px;border:1px solid #1e293b;font-size:0.7rem;color:#94a3b8;">
+                    <span>📁 Total: <strong id="totalFoldersCount" style="color:#f1f5f9;">0</strong></span>
+                    <span>🟢 Sincronizadas: <strong id="syncedFoldersCount" style="color:#10b981;">0</strong></span>
+                    <span>🔄 Activas: <strong id="activeFoldersCount" style="color:#f59e0b;">0</strong></span>
+                    <span>❌ Errores: <strong id="errorFoldersCount" style="color:#ef4444;">0</strong></span>
+                </div>
             </div>
 
             <!-- Footer -->
             <div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:8px;border-top:1px solid #334155;font-size:0.55rem;color:#475569;">
                 <span>🔄 Sincronización en tiempo real</span>
-                <span id="syncVersion">v7.0 - Fusionado</span>
+                <span id="syncVersion">v7.0 - Gestor Completo</span>
             </div>
         `;
 
@@ -406,7 +475,13 @@
             folderCountBadge: document.getElementById('folderCountBadge'),
             addFolderBtn: document.getElementById('addFolderBtn'),
             syncAllFoldersBtn: document.getElementById('syncAllFoldersBtn'),
-            stopAllFoldersBtn: document.getElementById('stopAllFoldersBtn')
+            stopAllFoldersBtn: document.getElementById('stopAllFoldersBtn'),
+            clearFoldersBtn: document.getElementById('clearFoldersBtn'),
+            // Resumen
+            totalFoldersCount: document.getElementById('totalFoldersCount'),
+            syncedFoldersCount: document.getElementById('syncedFoldersCount'),
+            activeFoldersCount: document.getElementById('activeFoldersCount'),
+            errorFoldersCount: document.getElementById('errorFoldersCount')
         };
 
         // Configurar eventos
@@ -442,6 +517,7 @@
                     ui.syncTab.style.display = 'none';
                     ui.foldersTab.style.display = 'block';
                     renderFoldersList();
+                    updateFolderStats();
                 }
             });
         });
@@ -483,6 +559,7 @@
                 SYNC_CONFIG.syncFolders = JSON.parse(saved);
                 renderFoldersList();
                 updateFolderBadge();
+                updateFolderStats();
             }
         } catch (e) {
             console.error('Error cargando carpetas:', e);
@@ -494,6 +571,7 @@
             localStorage.setItem('syncFolders', JSON.stringify(SYNC_CONFIG.syncFolders));
             renderFoldersList();
             updateFolderBadge();
+            updateFolderStats();
         } catch (e) {
             console.error('Error guardando carpetas:', e);
         }
@@ -502,6 +580,20 @@
     function updateFolderBadge() {
         const ui = SYNC_CONFIG.uiElements;
         ui.folderCountBadge.textContent = SYNC_CONFIG.syncFolders.length;
+    }
+
+    function updateFolderStats() {
+        const ui = SYNC_CONFIG.uiElements;
+        const folders = SYNC_CONFIG.syncFolders;
+        const total = folders.length;
+        const synced = folders.filter(f => f.status === 'completed').length;
+        const active = folders.filter(f => f.status === 'syncing').length;
+        const errors = folders.filter(f => f.status === 'error').length;
+
+        ui.totalFoldersCount.textContent = total;
+        ui.syncedFoldersCount.textContent = synced;
+        ui.activeFoldersCount.textContent = active;
+        ui.errorFoldersCount.textContent = errors;
     }
 
     function renderFoldersList() {
@@ -520,44 +612,54 @@
         }
 
         ui.foldersList.innerHTML = folders.map((folder, index) => {
-            const isSynced = folder.status === 'completed' || folder.status === 'syncing';
+            const isSynced = folder.status === 'completed';
+            const isActive = folder.status === 'syncing';
             const statusColor = getStatusColor(folder.status);
             const statusText = getStatusText(folder.status);
-            const isActive = folder.status === 'syncing';
 
             return `
-                <div class="folder-item ${isSynced ? 'synced' : ''}" style="background:#0f172a;border-radius:10px;padding:12px;border:1px solid ${isSynced ? '#10b981' : '#1e293b'};transition:all 0.3s;animation:fadeIn 0.3s ease;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <div style="flex:1;overflow:hidden;">
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <i class="fas fa-folder" style="color:${isSynced ? '#10b981' : '#f59e0b'};"></i>
-                                <span style="font-weight:500;font-size:0.85rem;color:${isSynced ? '#10b981' : '#f1f5f9'};word-break:break-all;">${escapeHtml(folder.localPath)}</span>
-                                ${isSynced ? '<span style="font-size:0.6rem;color:#10b981;">✅</span>' : ''}
+                <div class="folder-item ${isSynced ? 'synced' : ''}" style="background:#0f172a;border-radius:10px;padding:12px;border:1px solid ${isSynced ? '#10b981' : '#1e293b'};transition:all 0.3s;animation:fadeIn 0.3s ease;position:relative;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                        <div style="flex:1;min-width:0;overflow:hidden;">
+                            <!-- Nombre de la carpeta y estado -->
+                            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                <i class="fas fa-folder" style="color:${isSynced ? '#10b981' : '#f59e0b'};flex-shrink:0;"></i>
+                                <span style="font-weight:500;font-size:0.85rem;color:${isSynced ? '#10b981' : '#f1f5f9'};word-break:break-all;flex:1;">
+                                    ${escapeHtml(folder.localPath)}
+                                </span>
+                                ${isSynced ? '<span style="font-size:0.7rem;color:#10b981;flex-shrink:0;">✅ Sincronizado</span>' : ''}
+                                ${isActive ? '<span style="font-size:0.7rem;color:#f59e0b;flex-shrink:0;">🔄 Sincronizando</span>' : ''}
+                                ${folder.status === 'error' ? '<span style="font-size:0.7rem;color:#ef4444;flex-shrink:0;">❌ Error</span>' : ''}
+                                ${folder.status === 'stopped' ? '<span style="font-size:0.7rem;color:#f59e0b;flex-shrink:0;">⏹️ Detenido</span>' : ''}
                             </div>
+                            <!-- Detalles -->
                             <div style="font-size:0.7rem;color:#94a3b8;margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                                 <span>☁️ ${escapeHtml(folder.remoteName)}</span>
-                                <span style="color:${statusColor};">• ${statusText}</span>
+                                <span>•</span>
+                                <span class="folder-status" style="color:${statusColor};">${statusText}</span>
                                 ${folder.files ? `<span>• 📁 ${folder.files} archivos</span>` : ''}
+                                ${folder.error ? `<span style="color:#ef4444;">• ${escapeHtml(folder.error)}</span>` : ''}
                             </div>
                         </div>
-                        <div style="display:flex;gap:4px;flex-shrink:0;">
+                        <!-- Botones de acción -->
+                        <div class="folder-actions" style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;">
                             ${!isActive ? `
-                                <button class="sync-folder-btn" data-index="${index}" style="background:none;border:none;color:#10b981;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:0.75rem;" title="Sincronizar">
+                                <button class="btn-sync-folder" data-index="${index}" title="Sincronizar carpeta" style="background:none;border:none;color:#10b981;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:0.75rem;transition:all 0.2s;" onmouseover="this.style.background='rgba(16,185,129,0.2)'" onmouseout="this.style.background='transparent'">
                                     <i class="fas fa-play"></i>
                                 </button>
                             ` : `
-                                <button class="stop-folder-btn" data-index="${index}" style="background:none;border:none;color:#fca5a5;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:0.75rem;" title="Detener">
+                                <button class="btn-stop-folder" data-index="${index}" title="Detener sincronización" style="background:none;border:none;color:#fca5a5;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:0.75rem;transition:all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.2)'" onmouseout="this.style.background='transparent'">
                                     <i class="fas fa-stop"></i>
                                 </button>
                             `}
-                            <button class="remove-folder-btn" data-index="${index}" style="background:none;border:none;color:#64748b;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:0.75rem;" title="Eliminar">
+                            <button class="btn-remove-folder" data-index="${index}" title="Eliminar carpeta" style="background:none;border:none;color:#64748b;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:0.75rem;transition:all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.2)';this.style.color='#ef4444'" onmouseout="this.style.background='transparent';this.style.color='#64748b'">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
                     </div>
                     ${isActive ? `
-                        <div style="margin-top:6px;background:#334155;border-radius:10px;height:4px;overflow:hidden;">
-                            <div style="background:linear-gradient(90deg,#3b82f6,#8b5cf6);height:100%;width:${folder.progress || 0}%;transition:width 0.3s ease;"></div>
+                        <div class="folder-progress-bar">
+                            <div class="progress-fill" style="width:${folder.progress || 0}%;"></div>
                         </div>
                         <div style="font-size:0.6rem;color:#64748b;margin-top:3px;text-align:right;">${folder.progress || 0}%</div>
                     ` : ''}
@@ -566,25 +668,25 @@
         }).join('');
 
         // Eventos para los botones de cada carpeta
-        document.querySelectorAll('.sync-folder-btn').forEach(btn => {
+        document.querySelectorAll('.btn-sync-folder').forEach(btn => {
             btn.addEventListener('click', () => {
                 const index = parseInt(btn.dataset.index);
                 startFolderSync(index);
             });
         });
 
-        document.querySelectorAll('.stop-folder-btn').forEach(btn => {
+        document.querySelectorAll('.btn-stop-folder').forEach(btn => {
             btn.addEventListener('click', () => {
                 const index = parseInt(btn.dataset.index);
                 stopFolderSync(index);
             });
         });
 
-        document.querySelectorAll('.remove-folder-btn').forEach(btn => {
+        document.querySelectorAll('.btn-remove-folder').forEach(btn => {
             btn.addEventListener('click', () => {
                 const index = parseInt(btn.dataset.index);
                 const folder = SYNC_CONFIG.syncFolders[index];
-                if (folder && confirm(`¿Eliminar la carpeta "${folder.localPath}"?`)) {
+                if (folder && confirm(`¿Eliminar la carpeta "${folder.localPath}"?\nEsto NO eliminará los archivos de la nube, solo la configuración de sincronización.`)) {
                     SYNC_CONFIG.syncFolders.splice(index, 1);
                     saveFolders();
                     addLog(`🗑️ Carpeta eliminada: ${folder.localPath}`, 'warning');
@@ -604,7 +706,16 @@
         try {
             folder.status = 'syncing';
             folder.progress = 0;
+            folder.error = null;
             saveFolders();
+            updateFolderStats();
+            addLog(`🚀 Iniciando sincronización: ${folder.localPath} → ${folder.remoteName}`, 'info');
+
+            // Verificar servidor
+            const statusResponse = await fetch(`${SYNC_CONFIG.serverUrl}/api/sync/status`);
+            if (!statusResponse.ok) {
+                throw new Error('Servidor no disponible');
+            }
 
             const response = await fetch(`${SYNC_CONFIG.serverUrl}/api/sync/start`, {
                 method: 'POST',
@@ -623,13 +734,16 @@
             folder.files = data.files || 0;
             folder.status = 'syncing';
             saveFolders();
-            addLog(`🚀 Sincronizando: ${folder.localPath} → ${folder.remoteName}`, 'success');
+            addLog(`✅ Sincronización iniciada: ${folder.remoteName}`, 'success');
+            
+            // Conectar a eventos para esta carpeta
             connectToFolderEvents(index);
 
         } catch (error) {
             folder.status = 'error';
             folder.error = error.message;
             saveFolders();
+            updateFolderStats();
             addLog(`❌ Error: ${error.message}`, 'error');
         }
     }
@@ -638,10 +752,13 @@
         const folder = SYNC_CONFIG.syncFolders[index];
         if (!folder) return;
 
+        addLog(`⏹️ Deteniendo sincronización: ${folder.remoteName}`, 'warning');
+
         fetch(`${SYNC_CONFIG.serverUrl}/api/sync/stop`, { method: 'POST' })
             .then(() => {
                 folder.status = 'stopped';
                 saveFolders();
+                updateFolderStats();
                 addLog(`⏹️ Detenido: ${folder.remoteName}`, 'warning');
             })
             .catch(err => {
@@ -670,14 +787,18 @@
                             folder.status = 'completed';
                         }
                         saveFolders();
+                        updateFolderStats();
                     } else if (data.event === 'sync_complete') {
                         folder.status = 'completed';
                         folder.progress = 100;
                         saveFolders();
+                        updateFolderStats();
                         addLog(`✅ Sincronización completada: ${folder.remoteName}`, 'success');
                     } else if (data.event === 'sync_error') {
                         folder.status = 'error';
+                        folder.error = data.message;
                         saveFolders();
+                        updateFolderStats();
                         addLog(`❌ Error: ${data.message}`, 'error');
                     }
                 } catch (e) {}
@@ -699,19 +820,35 @@
 
     async function syncAllFolders() {
         const ui = SYNC_CONFIG.uiElements;
+        const folders = SYNC_CONFIG.syncFolders;
+
+        if (folders.length === 0) {
+            addLog('⚠️ No hay carpetas para sincronizar', 'warning');
+            return;
+        }
+
         ui.syncAllFoldersBtn.style.display = 'none';
         ui.stopAllFoldersBtn.style.display = 'block';
 
-        for (let i = 0; i < SYNC_CONFIG.syncFolders.length; i++) {
-            const folder = SYNC_CONFIG.syncFolders[i];
+        let syncedCount = 0;
+        let errorCount = 0;
+
+        for (let i = 0; i < folders.length; i++) {
+            const folder = folders[i];
             if (folder.status !== 'syncing' && folder.status !== 'completed') {
+                addLog(`📂 Procesando ${i+1}/${folders.length}: ${folder.localPath}`, 'info');
                 await startFolderSync(i);
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Esperar un poco entre carpetas
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                if (folder.status === 'completed') syncedCount++;
+                if (folder.status === 'error') errorCount++;
             }
         }
 
         ui.syncAllFoldersBtn.style.display = 'block';
         ui.stopAllFoldersBtn.style.display = 'none';
+
+        addLog(`✅ Sincronización completada: ${syncedCount} carpetas sincronizadas, ${errorCount} errores`, 'success');
     }
 
     function stopAllFolders() {
@@ -725,12 +862,25 @@
         ui.stopAllFoldersBtn.style.display = 'none';
     }
 
+    function clearAllFolders() {
+        if (SYNC_CONFIG.syncFolders.length === 0) {
+            addLog('⚠️ No hay carpetas para limpiar', 'warning');
+            return;
+        }
+
+        if (confirm('¿Eliminar TODAS las carpetas de la lista?\nEsto NO eliminará los archivos de la nube, solo la configuración de sincronización.')) {
+            SYNC_CONFIG.syncFolders = [];
+            saveFolders();
+            addLog('🗑️ Todas las carpetas eliminadas', 'warning');
+        }
+    }
+
     // ============================================================
-    //  AGREGAR NUEVA CARPETA (Modal simplificado)
+    //  AGREGAR NUEVA CARPETA (Modal completo)
     // ============================================================
 
     function showAddFolderModal() {
-        // Crear modal simple
+        // Crear modal
         const overlay = document.createElement('div');
         overlay.id = 'addFolderModal';
         overlay.style.cssText = `
@@ -742,32 +892,43 @@
             justify-content: center;
             align-items: center;
             backdrop-filter: blur(4px);
+            animation: fadeIn 0.2s ease;
         `;
 
         overlay.innerHTML = `
-            <div style="background:#1e293b;border-radius:16px;padding:24px;max-width:450px;width:90%;border:1px solid #475569;">
-                <h3 style="color:#f1f5f9;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
-                    <i class="fas fa-folder-plus" style="color:#60a5fa;"></i>
-                    Agregar Carpeta
-                </h3>
+            <div style="background:#1e293b;border-radius:16px;padding:28px;max-width:450px;width:90%;border:1px solid #475569;box-shadow:0 20px 60px rgba(0,0,0,0.8);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                    <h3 style="color:#f1f5f9;font-size:1.1rem;display:flex;align-items:center;gap:8px;">
+                        <i class="fas fa-folder-plus" style="color:#60a5fa;"></i>
+                        Agregar Carpeta
+                    </h3>
+                    <button id="modalCloseBtn" style="background:none;border:none;color:#94a3b8;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:1.2rem;" onmouseover="this.style.background='#7f1d1d';this.style.color='#fca5a5'" onmouseout="this.style.background='transparent';this.style.color='#94a3b8'">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
                 <div style="margin-bottom:12px;">
-                    <label style="font-size:0.75rem;color:#94a3b8;display:block;margin-bottom:4px;">Carpeta local</label>
+                    <label style="font-size:0.75rem;color:#94a3b8;display:block;margin-bottom:4px;">📁 Carpeta local</label>
                     <div style="display:flex;gap:8px;">
                         <input type="text" id="modalLocalPath" placeholder="C:/ruta/a/carpeta" 
                                style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:#f1f5f9;font-size:0.85rem;font-family:'Inter',sans-serif;outline:none;">
-                        <button id="modalBrowseBtn" style="padding:8px 14px;border-radius:10px;border:none;background:#3b82f6;color:white;cursor:pointer;font-size:0.85rem;" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">
+                        <button id="modalBrowseBtn" style="padding:8px 14px;border-radius:10px;border:none;background:#3b82f6;color:white;cursor:pointer;font-size:0.85rem;transition:all 0.2s;" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">
                             <i class="fas fa-folder-open"></i>
                         </button>
                     </div>
                 </div>
                 <div style="margin-bottom:16px;">
-                    <label style="font-size:0.75rem;color:#94a3b8;display:block;margin-bottom:4px;">Nombre en la nube</label>
+                    <label style="font-size:0.75rem;color:#94a3b8;display:block;margin-bottom:4px;">☁️ Nombre en la nube</label>
                     <input type="text" id="modalRemoteName" placeholder="nombre_carpeta" 
                            style="width:100%;padding:8px 12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:#f1f5f9;font-size:0.85rem;font-family:'Inter',sans-serif;outline:none;">
+                    <div style="font-size:0.6rem;color:#64748b;margin-top:4px;">
+                        💡 Solo letras, números, guiones y guión bajo
+                    </div>
                 </div>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
-                    <button id="modalCancelBtn" style="padding:8px 20px;border-radius:10px;border:none;background:#334155;color:#94a3b8;cursor:pointer;font-weight:600;">Cancelar</button>
-                    <button id="modalConfirmBtn" style="padding:8px 20px;border-radius:10px;border:none;background:#10b981;color:white;cursor:pointer;font-weight:600;" onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10b981'">
+                    <button id="modalCancelBtn" style="padding:8px 20px;border-radius:10px;border:none;background:#334155;color:#94a3b8;cursor:pointer;font-weight:600;transition:all 0.2s;" onmouseover="this.style.background='#475569';this.style.color='#f1f5f9'" onmouseout="this.style.background='#334155';this.style.color='#94a3b8'">
+                        Cancelar
+                    </button>
+                    <button id="modalConfirmBtn" style="padding:8px 20px;border-radius:10px;border:none;background:#10b981;color:white;cursor:pointer;font-weight:600;transition:all 0.2s;" onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10b981'">
                         <i class="fas fa-plus"></i> Agregar
                     </button>
                 </div>
@@ -776,7 +937,14 @@
 
         document.body.appendChild(overlay);
 
+        // Enfocar el primer campo
+        setTimeout(() => document.getElementById('modalLocalPath').focus(), 100);
+
         // Eventos del modal
+        document.getElementById('modalCloseBtn').addEventListener('click', () => {
+            overlay.remove();
+        });
+
         document.getElementById('modalCancelBtn').addEventListener('click', () => {
             overlay.remove();
         });
@@ -787,13 +955,23 @@
 
             if (!localPath) {
                 showToast('⚠️ Ingresa la ruta de la carpeta local', 'warning');
+                document.getElementById('modalLocalPath').focus();
                 return;
             }
             if (!remoteName) {
                 showToast('⚠️ Ingresa un nombre para la carpeta en la nube', 'warning');
+                document.getElementById('modalRemoteName').focus();
                 return;
             }
 
+            // Validar nombre remoto
+            if (!remoteName.match(/^[a-zA-Z0-9_\-]+$/)) {
+                showToast('❌ El nombre solo puede contener letras, números, guiones y guión bajo', 'error');
+                document.getElementById('modalRemoteName').focus();
+                return;
+            }
+
+            // Verificar duplicados
             const exists = SYNC_CONFIG.syncFolders.some(f => 
                 f.localPath === localPath || f.remoteName === remoteName
             );
@@ -803,6 +981,7 @@
                 return;
             }
 
+            // Agregar carpeta
             SYNC_CONFIG.syncFolders.push({
                 id: generateValidId(),
                 localPath: localPath,
@@ -819,6 +998,7 @@
             addLog(`📁 Carpeta agregada: ${localPath} → ${remoteName}`, 'success');
         });
 
+        // Botón de navegación
         document.getElementById('modalBrowseBtn').addEventListener('click', () => {
             if (window.showDirectoryPicker) {
                 window.showDirectoryPicker().then(async (dirHandle) => {
@@ -839,6 +1019,7 @@
                     if (!document.getElementById('modalRemoteName').value) {
                         document.getElementById('modalRemoteName').value = remoteName;
                     }
+                    document.getElementById('modalConfirmBtn').focus();
                 }).catch(() => {});
             } else {
                 const input = document.createElement('input');
@@ -853,6 +1034,7 @@
                         if (!document.getElementById('modalRemoteName').value) {
                             document.getElementById('modalRemoteName').value = remoteName;
                         }
+                        document.getElementById('modalConfirmBtn').focus();
                     }
                 };
                 input.click();
@@ -861,7 +1043,7 @@
 
         // Enter en los campos
         document.getElementById('modalLocalPath').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') document.getElementById('modalConfirmBtn').click();
+            if (e.key === 'Enter') document.getElementById('modalRemoteName').focus();
         });
         document.getElementById('modalRemoteName').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') document.getElementById('modalConfirmBtn').click();
@@ -874,6 +1056,31 @@
                 document.removeEventListener('keydown', handler);
             }
         });
+
+        // Clic fuera del modal
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.remove();
+            }
+        });
+    }
+
+    // ============================================================
+    //  TOAST NOTIFICATIONS
+    // ============================================================
+
+    function showToast(message, type = 'info') {
+        const toast = document.getElementById('toast');
+        if (toast) {
+            toast.textContent = message;
+            toast.className = 'toast show' + (type === 'error' ? ' error' : '');
+            clearTimeout(toast._timeout);
+            toast._timeout = setTimeout(() => {
+                toast.className = 'toast';
+            }, 3500);
+        } else {
+            console.log(`🔔 ${type.toUpperCase()}: ${message}`);
+        }
     }
 
     // ============================================================
@@ -1031,6 +1238,7 @@
         ui.addFolderBtn.addEventListener('click', showAddFolderModal);
         ui.syncAllFoldersBtn.addEventListener('click', syncAllFolders);
         ui.stopAllFoldersBtn.addEventListener('click', stopAllFolders);
+        ui.clearFoldersBtn.addEventListener('click', clearAllFolders);
     }
 
     // ============================================================
@@ -1378,7 +1586,10 @@
                 addedAt: new Date().toISOString()
             });
             saveFolders();
-        }
+        },
+        syncAll: syncAllFolders,
+        stopAll: stopAllFolders,
+        clearAll: clearAllFolders
     };
 
     // ============================================================
