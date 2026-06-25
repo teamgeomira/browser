@@ -1,4 +1,4 @@
-// server.js - Servidor COMPLETO (CORREGIDO)
+// server.js - Sincronizador COMPLETO (CON ncc_nordic)
 // EJECUTAR: node server.js
 
 const express = require('express');
@@ -34,31 +34,22 @@ if (!fs.existsSync(INDEX_PATH)) {
 console.log('✅ index.html encontrado');
 
 // ============================================================
-//  RUTAS (CORREGIDAS)
+//  RUTAS PRINCIPALES
 // ============================================================
 
-// Ruta principal
 app.get('/', (req, res) => {
     res.sendFile(INDEX_PATH);
 });
 
-// Ruta para archivos estáticos - CORREGIDO
-app.get('/:file', (req, res) => {
-    const filePath = path.join(__dirname, req.params.file);
-    if (fs.existsSync(filePath)) {
-        res.sendFile(filePath);
-    } else {
-        res.status(404).send('Archivo no encontrado');
-    }
-});
-
 // ============================================================
-//  CONFIGURACIÓN
+//  CONFIGURACIÓN - USANDO ncc_nordic (EL QUE FUNCIONA)
 // ============================================================
 
-const CLOUD_NAME = "dc1zqri3o";
-const UPLOAD_PRESET = "ncc_nordic";
-const FIREBASE_REST_URL = "https://trip-a9341-default-rtdb.firebaseio.com";
+const CONFIG = {
+    CLOUD_NAME: "dc1zqri3o",
+    UPLOAD_PRESET: "ncc_nordic",  // ← ESTE ES EL QUE FUNCIONA
+    FIREBASE_REST_URL: "https://trip-a9341-default-rtdb.firebaseio.com"
+};
 
 // ============================================================
 //  FUNCIONES DE UTILIDAD
@@ -108,18 +99,19 @@ function getFileType(filename) {
         'pptx': 'document', 'txt': 'document',
         'zip': 'archive', 'rar': 'archive', '7z': 'archive',
         'tar': 'archive', 'gz': 'archive', 'bz2': 'archive', 'xz': 'archive',
-        'dwg': 'cad', 'dxf': 'cad', 'geo': 'cad', 'trm': 'cad', 'bup': 'cad'
+        'dwg': 'cad', 'dxf': 'cad', 'geo': 'cad', 'trm': 'cad', 'bup': 'cad',
+        'ln3': 'cad'
     };
     return types[ext] || 'other';
 }
 
 // ============================================================
-//  FUNCIONES PARA FIREBASE (REST API)
+//  FUNCIONES PARA FIREBASE
 // ============================================================
 
 async function firebaseGet(path) {
     try {
-        const response = await fetch(`${FIREBASE_REST_URL}/${path}.json`);
+        const response = await fetch(`${CONFIG.FIREBASE_REST_URL}/${path}.json`);
         return await response.json();
     } catch (error) {
         console.error('Error GET Firebase:', error);
@@ -129,7 +121,7 @@ async function firebaseGet(path) {
 
 async function firebasePut(path, data) {
     try {
-        const response = await fetch(`${FIREBASE_REST_URL}/${path}.json`, {
+        const response = await fetch(`${CONFIG.FIREBASE_REST_URL}/${path}.json`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
@@ -143,7 +135,7 @@ async function firebasePut(path, data) {
 
 async function firebasePost(path, data) {
     try {
-        const response = await fetch(`${FIREBASE_REST_URL}/${path}.json`, {
+        const response = await fetch(`${CONFIG.FIREBASE_REST_URL}/${path}.json`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
@@ -157,7 +149,7 @@ async function firebasePost(path, data) {
 
 async function firebaseDelete(path) {
     try {
-        const response = await fetch(`${FIREBASE_REST_URL}/${path}.json`, {
+        const response = await fetch(`${CONFIG.FIREBASE_REST_URL}/${path}.json`, {
             method: 'DELETE'
         });
         return response.ok;
@@ -168,19 +160,27 @@ async function firebaseDelete(path) {
 }
 
 // ============================================================
-//  FUNCIÓN PARA CLOUDINARY
+//  FUNCIÓN PARA CLOUDINARY - USANDO ncc_nordic (IGUAL QUE EL FRONTEND)
 // ============================================================
 
 async function uploadToCloudinary(fileBuffer, filename) {
     try {
+        console.log(`📤 Subiendo a Cloudinary: ${filename}`);
+        console.log(`   📦 Tamaño: ${formatSize(fileBuffer.length)}`);
+        
         const form = new FormData();
         form.append('file', fileBuffer, {
             filename: filename,
             contentType: 'application/octet-stream'
         });
-        form.append('upload_preset', UPLOAD_PRESET);
+        form.append('upload_preset', CONFIG.UPLOAD_PRESET);
 
-        const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`, {
+        // 🔥 IGUAL QUE EN EL FRONTEND: /auto/upload
+        const url = `https://api.cloudinary.com/v1_1/${CONFIG.CLOUD_NAME}/auto/upload`;
+        console.log(`   🌐 URL: ${url}`);
+        console.log(`   📋 Preset: ${CONFIG.UPLOAD_PRESET}`);
+        
+        const response = await fetch(url, {
             method: 'POST',
             body: form,
             headers: form.getHeaders()
@@ -189,11 +189,14 @@ async function uploadToCloudinary(fileBuffer, filename) {
         const data = await response.json();
         
         if (!response.ok) {
-            console.error('❌ Cloudinary error:', data);
+            console.error('❌ Cloudinary error response:', JSON.stringify(data, null, 2));
+            console.error('❌ Status:', response.status);
+            console.error('❌ StatusText:', response.statusText);
             throw new Error(data.error?.message || 'Error en Cloudinary');
         }
         
         console.log(`✅ Subido a Cloudinary: ${filename}`);
+        console.log(`   🔗 URL: ${data.secure_url}`);
         return {
             success: true,
             url: data.secure_url,
@@ -208,7 +211,7 @@ async function uploadToCloudinary(fileBuffer, filename) {
 }
 
 // ============================================================
-//  FUNCIÓN DE SINCRONIZACIÓN COMPLETA
+//  FUNCIÓN DE SINCRONIZACIÓN
 // ============================================================
 
 async function syncFolder(localPath, remoteFolder) {
@@ -782,17 +785,15 @@ function openBrowser(url) {
 const server = app.listen(PORT, () => {
     const url = `http://localhost:${PORT}`;
     console.log('═══════════════════════════════════════════════════════════');
-    console.log('🔄 Sincronizador COMPLETO (CORREGIDO)');
+    console.log('🔄 Sincronizador COMPLETO');
     console.log('═══════════════════════════════════════════════════════════');
     console.log(`📍 Puerto: ${PORT}`);
     console.log(`🌐 Abriendo: ${url}`);
     console.log('═══════════════════════════════════════════════════════════');
     console.log(`📁 index.html: ${INDEX_PATH}`);
-    console.log('✅ Sirve index.html + API');
-    console.log('✅ Usa preset: ncc_nordic');
+    console.log(`✅ Usa preset: ${CONFIG.UPLOAD_PRESET}`);
     console.log('✅ Sube archivos a Cloudinary');
     console.log('✅ Guarda metadatos en Firebase');
-    console.log('✅ Monitorea cambios en tiempo real');
     console.log('═══════════════════════════════════════════════════════════\n');
     
     setTimeout(() => openBrowser(url), 1000);
