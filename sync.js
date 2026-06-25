@@ -1,4 +1,4 @@
-// sync.js - Sincronizador COMPLETO para Delad Mapp Online
+// sync.js - Sincronizador COMPLETO
 // Se integra con index.html - Interfaz de usuario para sincronización
 // Comunicación con servidor Node.js (server.js) en http://localhost:3001
 
@@ -263,6 +263,78 @@
         document.body.appendChild(toggleBtn);
 
         // ============================================================
+        //  BOTÓN PARA INICIAR SERVIDOR (DESCARGAR .bat)
+        // ============================================================
+
+        // Agregar botón en el panel de sincronización
+        const startServerBtn = document.createElement('button');
+        startServerBtn.id = 'syncStartServerBtn';
+        startServerBtn.textContent = '🚀 Iniciar servidor local';
+        startServerBtn.style.cssText = `
+            background: #8b5cf6;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 10px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s;
+        `;
+        startServerBtn.onmouseover = function() {
+            this.style.background = '#7c3aed';
+        };
+        startServerBtn.onmouseout = function() {
+            this.style.background = '#8b5cf6';
+        };
+
+        startServerBtn.addEventListener('click', function() {
+            // Crear el contenido del archivo .bat
+            const batContent = `@echo off
+title Sincronizador - Delad Mapp Online
+echo ========================================
+echo   Sincronizador - Delad Mapp Online
+echo ========================================
+echo.
+cd /d "C:\\Users\\vinic_flqp90p\\Videos"
+echo 🔄 Iniciando servidor...
+start /B node server.js
+echo ✅ Servidor iniciado
+echo.
+echo 🌐 Abriendo navegador...
+timeout /t 2 /nobreak >nul
+start http://localhost:3001
+echo.
+echo ========================================
+echo   Servidor corriendo en:
+echo   http://localhost:3001
+echo ========================================
+pause`;
+
+            // Crear y descargar el archivo .bat
+            const blob = new Blob([batContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'iniciar-sync.bat';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            addLog('📥 Archivo "iniciar-sync.bat" descargado. Ejecútalo para iniciar el servidor.', 'info');
+        });
+
+        // Insertar el botón en el panel (después del botón Detener)
+        const stopBtn = document.getElementById('syncStopBtn');
+        if (stopBtn && stopBtn.parentNode) {
+            stopBtn.parentNode.appendChild(startServerBtn);
+        }
+
+        // ============================================================
         //  GUARDAR REFERENCIAS A ELEMENTOS UI
         // ============================================================
 
@@ -294,7 +366,8 @@
             logContent: document.getElementById('syncLogContent'),
             minimizeBtn: document.getElementById('syncMinimizeBtn'),
             closeBtn: document.getElementById('syncCloseBtn'),
-            version: document.getElementById('syncVersion')
+            version: document.getElementById('syncVersion'),
+            startServerBtn: startServerBtn
         };
 
         // ============================================================
