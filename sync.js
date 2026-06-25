@@ -1,6 +1,5 @@
-// sync.js - Sincronizador COMPLETO CON INDICADORES VISUALES
-// Carpetas sincronizadas: VERDE | Archivos sincronizados: VERDE
-// Estado visible en cada carpeta y archivo
+// sync.js - Sincronizador COMPLETO CON GESTOR DE CARPETAS
+// Soporte para múltiples carpetas - Indicadores visuales claros
 
 (function() {
     'use strict';
@@ -19,10 +18,8 @@
         serverCheckInterval: null,
         reconnectAttempts: 0,
         maxReconnectAttempts: 5,
-        syncFolders: [], // Array de carpetas guardadas
-        syncedFiles: new Set(), // IDs de archivos sincronizados
-        currentFolderIndex: -1,
-        activeSyncs: {}
+        syncFolders: [], // Array de carpetas: { id, localPath, remoteName, status, files, progress, synced }
+        folderStatus: {} // Estado en tiempo real de cada carpeta
     };
 
     // ============================================================
@@ -47,16 +44,6 @@
         return Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 10);
     }
 
-    function getStatusColor(status) {
-        switch(status) {
-            case 'syncing': return '#10b981';
-            case 'completed': return '#10b981';
-            case 'error': return '#ef4444';
-            case 'stopped': return '#f59e0b';
-            default: return '#64748b';
-        }
-    }
-
     function getStatusIcon(status) {
         switch(status) {
             case 'syncing': return '🔄';
@@ -77,236 +64,96 @@
         }
     }
 
+    function getStatusColor(status) {
+        switch(status) {
+            case 'syncing': return '#f59e0b';
+            case 'completed': return '#10b981';
+            case 'error': return '#ef4444';
+            case 'stopped': return '#f59e0b';
+            default: return '#64748b';
+        }
+    }
+
+    function getStatusClass(status) {
+        switch(status) {
+            case 'syncing': return 'status-syncing';
+            case 'completed': return 'status-completed';
+            case 'error': return 'status-error';
+            case 'stopped': return 'status-stopped';
+            default: return 'status-idle';
+        }
+    }
+
     // ============================================================
-    //  CREAR INTERFAZ COMPLETA CON INDICADORES VISUALES
+    //  CREAR INTERFAZ COMPLETA
     // ============================================================
 
     function createSyncUI() {
         if (document.getElementById('syncPanel')) return;
 
-        // Estilos adicionales
+        // Estilos
         const style = document.createElement('style');
         style.textContent = `
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-            @keyframes pulse-dot {
-                0%, 100% { opacity: 1; }
-                50% { opacity: 0.3; }
-            }
-            @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(10px); }
-                to { opacity: 1; transform: translateY(0); }
-            }
-            @keyframes syncPulse {
-                0%, 100% { opacity: 1; }
-                50% { opacity: 0.5; }
-            }
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+            @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
             .sync-pulse { animation: pulse-dot 1.5s ease-in-out infinite; }
             .sync-spin { animation: spin 2s linear infinite; }
             .sync-fade-in { animation: fadeIn 0.3s ease; }
-            .sync-pulsing { animation: syncPulse 1s ease-in-out infinite; }
-            
             #syncLogContent::-webkit-scrollbar { width: 4px; }
             #syncLogContent::-webkit-scrollbar-track { background: #0f172a; }
             #syncLogContent::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 4px; }
             
-            #syncPanel .sync-status-badge {
-                font-size: 0.6rem;
-                padding: 2px 10px;
-                border-radius: 12px;
-                font-weight: 400;
-            }
-            
-            /* ===== INDICADORES DE CARPETAS SINCRONIZADAS ===== */
             .folder-item {
                 transition: all 0.3s ease;
                 border-left: 4px solid #334155;
-            }
-            .folder-item.status-syncing {
-                border-left-color: #f59e0b !important;
-                background: rgba(245, 158, 11, 0.08);
-            }
-            .folder-item.status-completed {
-                border-left-color: #10b981 !important;
-                background: rgba(16, 185, 129, 0.1);
-            }
-            .folder-item.status-completed .folder-name {
-                color: #10b981 !important;
-            }
-            .folder-item.status-completed .folder-icon {
-                color: #10b981 !important;
-            }
-            .folder-item.status-error {
-                border-left-color: #ef4444 !important;
-                background: rgba(239, 68, 68, 0.08);
-            }
-            .folder-item.status-stopped {
-                border-left-color: #f59e0b !important;
-                background: rgba(245, 158, 11, 0.05);
-            }
-            
-            /* ===== INDICADORES DE ARCHIVOS SINCRONIZADOS ===== */
-            .file-card.status-synced {
-                border-color: #10b981 !important;
-                background: rgba(16, 185, 129, 0.05);
-            }
-            .file-card.status-synced .file-icon i {
-                color: #10b981 !important;
-            }
-            .file-card.status-synced .file-name {
-                color: #10b981 !important;
-            }
-            .file-card .sync-status-indicator {
-                display: none;
-                font-size: 0.65rem;
-                padding: 2px 8px;
+                background: #0f172a;
                 border-radius: 10px;
-                background: rgba(16, 185, 129, 0.15);
-                color: #10b981;
-                margin-left: 6px;
+                padding: 12px;
+                border: 1px solid #1e293b;
             }
-            .file-card.status-synced .sync-status-indicator {
-                display: inline-block;
-            }
+            .folder-item.status-syncing { border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.08); }
+            .folder-item.status-completed { border-left-color: #10b981; background: rgba(16, 185, 129, 0.1); }
+            .folder-item.status-completed .folder-name { color: #10b981; }
+            .folder-item.status-completed .folder-icon { color: #10b981; }
+            .folder-item.status-error { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.08); }
+            .folder-item.status-stopped { border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.05); }
             
-            /* ===== BARRA DE PROGRESO ===== */
-            .folder-progress-container {
-                margin-top: 8px;
-                display: none;
-            }
-            .folder-item.status-syncing .folder-progress-container {
-                display: block;
-            }
-            .folder-progress-bar {
-                background: #334155;
-                border-radius: 10px;
-                height: 4px;
-                overflow: hidden;
-            }
-            .folder-progress-bar .progress-fill {
-                height: 100%;
-                background: linear-gradient(90deg, #3b82f6, #8b5cf6);
-                transition: width 0.3s ease;
-                width: 0%;
-            }
-            .folder-progress-text {
-                font-size: 0.6rem;
-                color: #64748b;
-                margin-top: 3px;
-                text-align: right;
-            }
-            
-            /* ===== ESTADO DE CARPETAS EN EL SIDEBAR ===== */
-            .folder-item .status-badge {
+            .status-badge {
                 font-size: 0.6rem;
                 padding: 2px 8px;
                 border-radius: 10px;
                 font-weight: 500;
                 flex-shrink: 0;
             }
-            .folder-item .status-badge.status-syncing {
-                background: rgba(245, 158, 11, 0.2);
-                color: #f59e0b;
-            }
-            .folder-item .status-badge.status-completed {
-                background: rgba(16, 185, 129, 0.2);
-                color: #10b981;
-            }
-            .folder-item .status-badge.status-error {
-                background: rgba(239, 68, 68, 0.2);
-                color: #ef4444;
-            }
-            .folder-item .status-badge.status-stopped {
-                background: rgba(245, 158, 11, 0.15);
-                color: #f59e0b;
-            }
-            .folder-item .status-badge.status-idle {
-                background: rgba(100, 116, 139, 0.15);
-                color: #94a3b8;
-            }
+            .status-badge.status-syncing { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+            .status-badge.status-completed { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+            .status-badge.status-error { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+            .status-badge.status-stopped { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+            .status-badge.status-idle { background: rgba(100, 116, 139, 0.15); color: #94a3b8; }
             
-            /* ===== BOTONES DE ACCIÓN ===== */
-            .folder-actions {
-                display: flex;
-                gap: 4px;
-                flex-shrink: 0;
-            }
-            .folder-actions button {
-                background: none;
-                border: none;
-                cursor: pointer;
-                padding: 4px 8px;
-                border-radius: 6px;
-                font-size: 0.75rem;
-                transition: all 0.2s;
-            }
-            .folder-actions .btn-sync-folder {
-                color: #10b981;
-            }
-            .folder-actions .btn-sync-folder:hover {
-                background: rgba(16, 185, 129, 0.2);
-            }
-            .folder-actions .btn-stop-folder {
-                color: #fca5a5;
-            }
-            .folder-actions .btn-stop-folder:hover {
-                background: rgba(239, 68, 68, 0.2);
-            }
-            .folder-actions .btn-remove-folder {
-                color: #64748b;
-            }
-            .folder-actions .btn-remove-folder:hover {
-                background: rgba(239, 68, 68, 0.2);
-                color: #ef4444;
-            }
+            .folder-progress-container { margin-top: 8px; display: none; }
+            .folder-item.status-syncing .folder-progress-container { display: block; }
+            .folder-progress-bar { background: #334155; border-radius: 10px; height: 4px; overflow: hidden; }
+            .folder-progress-bar .progress-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); transition: width 0.3s ease; width: 0%; }
+            .folder-progress-text { font-size: 0.6rem; color: #64748b; margin-top: 3px; text-align: right; }
             
-            /* ===== ESTADÍSTICAS ===== */
-            .stats-grid {
-                display: grid;
-                grid-template-columns: 1fr 1fr 1fr 1fr;
-                gap: 6px;
-                padding: 8px;
-                background: #0f172a;
-                border-radius: 10px;
-                border: 1px solid #1e293b;
-                font-size: 0.7rem;
-                color: #94a3b8;
-            }
-            .stats-grid .stat-item {
-                text-align: center;
-            }
-            .stats-grid .stat-item .stat-value {
-                font-size: 1rem;
-                font-weight: 600;
-                display: block;
-            }
-            .stats-grid .stat-item .stat-value.green {
-                color: #10b981;
-            }
-            .stats-grid .stat-item .stat-value.yellow {
-                color: #f59e0b;
-            }
-            .stats-grid .stat-item .stat-value.red {
-                color: #ef4444;
-            }
+            .folder-actions { display: flex; gap: 4px; flex-shrink: 0; }
+            .folder-actions button { background: none; border: none; cursor: pointer; padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; transition: all 0.2s; }
+            .folder-actions .btn-sync-folder { color: #10b981; }
+            .folder-actions .btn-sync-folder:hover { background: rgba(16, 185, 129, 0.2); }
+            .folder-actions .btn-stop-folder { color: #fca5a5; }
+            .folder-actions .btn-stop-folder:hover { background: rgba(239, 68, 68, 0.2); }
+            .folder-actions .btn-remove-folder { color: #64748b; }
+            .folder-actions .btn-remove-folder:hover { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
             
-            /* ===== SINCRONIZADOS EN EL SIDEBAR ===== */
-            .folder-item .sync-indicator {
-                display: none;
-                font-size: 0.7rem;
-            }
-            .folder-item.status-completed .sync-indicator {
-                display: inline-block;
-                color: #10b981;
-            }
-            
-            /* ===== MODAL ===== */
-            #addFolderModal input:focus {
-                border-color: #3b82f6;
-                outline: none;
-            }
+            .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; padding: 8px; background: #0f172a; border-radius: 10px; border: 1px solid #1e293b; font-size: 0.7rem; color: #94a3b8; }
+            .stats-grid .stat-item { text-align: center; }
+            .stats-grid .stat-item .stat-value { font-size: 1rem; font-weight: 600; display: block; }
+            .stats-grid .stat-item .stat-value.green { color: #10b981; }
+            .stats-grid .stat-item .stat-value.yellow { color: #f59e0b; }
+            .stats-grid .stat-item .stat-value.red { color: #ef4444; }
+            #addFolderModal input:focus { border-color: #3b82f6; outline: none; }
         `;
         document.head.appendChild(style);
 
@@ -372,7 +219,7 @@
                 </button>
             </div>
 
-            <!-- Contenido: Pestaña Sincronizar -->
+            <!-- Pestaña Sincronizar -->
             <div id="syncTabContent">
                 <div id="syncStatus" style="background:#0f172a;border-radius:10px;padding:10px 14px;margin-bottom:10px;border:1px solid #334155;">
                     <div style="display:flex;align-items:center;gap:10px;">
@@ -393,9 +240,7 @@
                             <i class="fas fa-folder-open"></i>
                         </button>
                     </div>
-                    <div style="font-size:0.6rem;color:#10b981;margin-top:4px;">
-                        ✅ La carpeta se creará automáticamente si no existe
-                    </div>
+                    <div style="font-size:0.6rem;color:#10b981;margin-top:4px;">✅ La carpeta se creará automáticamente si no existe</div>
                 </div>
 
                 <div style="margin-bottom:10px;">
@@ -409,9 +254,7 @@
                             <i class="fas fa-check"></i> Verificar
                         </button>
                     </div>
-                    <div style="font-size:0.6rem;color:#64748b;margin-top:4px;">
-                        💡 Si no existe, se creará automáticamente
-                    </div>
+                    <div style="font-size:0.6rem;color:#64748b;margin-top:4px;">💡 Si no existe, se creará automáticamente</div>
                     <div id="syncRemoteStatus" style="font-size:0.65rem;color:#64748b;margin-top:3px;"></div>
                 </div>
 
@@ -456,9 +299,8 @@
                 </div>
             </div>
 
-            <!-- Contenido: Pestaña Carpetas CON INDICADORES VISUALES -->
+            <!-- Pestaña Carpetas -->
             <div id="foldersTabContent" style="display:none;">
-                <!-- Barra de herramientas -->
                 <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
                     <button id="addFolderBtn" style="flex:1;min-width:80px;padding:8px 12px;border-radius:10px;border:none;background:#3b82f6;color:white;cursor:pointer;font-weight:600;font-size:0.8rem;font-family:'Inter',sans-serif;transition:all 0.2s;" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">
                         <i class="fas fa-plus"></i> Agregar
@@ -474,7 +316,6 @@
                     </button>
                 </div>
 
-                <!-- Lista de carpetas CON INDICADORES -->
                 <div id="foldersListContainer" style="max-height:280px;overflow-y:auto;margin-bottom:10px;">
                     <div id="foldersList" style="display:flex;flex-direction:column;gap:6px;">
                         <div style="text-align:center;color:#64748b;padding:30px 10px;font-size:0.85rem;">
@@ -485,38 +326,25 @@
                     </div>
                 </div>
 
-                <!-- Estadísticas de carpetas -->
                 <div class="stats-grid">
-                    <div class="stat-item">
-                        <span class="stat-value" id="totalFoldersCount">0</span>
-                        📁 Total
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-value green" id="syncedFoldersCount">0</span>
-                        ✅ Sincronizadas
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-value yellow" id="activeFoldersCount">0</span>
-                        🔄 Activas
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-value red" id="errorFoldersCount">0</span>
-                        ❌ Errores
-                    </div>
+                    <div class="stat-item"><span class="stat-value" id="totalFoldersCount">0</span> 📁 Total</div>
+                    <div class="stat-item"><span class="stat-value green" id="syncedFoldersCount">0</span> ✅ Sincronizadas</div>
+                    <div class="stat-item"><span class="stat-value yellow" id="activeFoldersCount">0</span> 🔄 Activas</div>
+                    <div class="stat-item"><span class="stat-value red" id="errorFoldersCount">0</span> ❌ Errores</div>
                 </div>
             </div>
 
             <!-- Footer -->
             <div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:8px;border-top:1px solid #334155;font-size:0.55rem;color:#475569;">
-                <span>🟢 = Sincronizado | 🟡 = En progreso</span>
-                <span id="syncVersion">v7.0 - Indicadores Visuales</span>
+                <span>🟢 = Sincronizado | 🟡 = En progreso | 🔴 = Error</span>
+                <span id="syncVersion">v7.0 - Múltiples Carpetas</span>
             </div>
         `;
 
         document.body.appendChild(syncPanel);
 
         // ============================================================
-        //  BOTÓN FLOTANTE PRINCIPAL
+        //  BOTÓN FLOTANTE
         // ============================================================
 
         const toggleBtn = document.createElement('button');
@@ -543,12 +371,8 @@
         toggleBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
         toggleBtn.title = 'Sincronización - Panel de Control';
 
-        toggleBtn.addEventListener('mouseenter', () => {
-            toggleBtn.style.transform = 'scale(1.1)';
-        });
-        toggleBtn.addEventListener('mouseleave', () => {
-            toggleBtn.style.transform = 'scale(1)';
-        });
+        toggleBtn.addEventListener('mouseenter', () => { toggleBtn.style.transform = 'scale(1.1)'; });
+        toggleBtn.addEventListener('mouseleave', () => { toggleBtn.style.transform = 'scale(1)'; });
 
         toggleBtn.addEventListener('click', () => {
             const panel = document.getElementById('syncPanel');
@@ -618,7 +442,7 @@
     }
 
     // ============================================================
-    //  EVENTOS DE PESTAÑAS
+    //  CONFIGURAR EVENTOS
     // ============================================================
 
     function setupTabEvents() {
@@ -645,10 +469,6 @@
             });
         });
     }
-
-    // ============================================================
-    //  CARGAR CONFIGURACIÓN
-    // ============================================================
 
     function loadSavedConfig() {
         const ui = SYNC_CONFIG.uiElements;
@@ -677,6 +497,8 @@
                 renderFoldersList();
                 updateFolderBadge();
                 updateFolderStats();
+                // Obtener estado del servidor para cada carpeta
+                checkFolderStatuses();
             }
         } catch (e) {
             console.error('Error cargando carpetas:', e);
@@ -714,7 +536,36 @@
     }
 
     // ============================================================
-    //  RENDERIZAR LISTA DE CARPETAS CON INDICADORES
+    //  VERIFICAR ESTADO DE CARPETAS EN EL SERVIDOR
+    // ============================================================
+
+    async function checkFolderStatuses() {
+        try {
+            const response = await fetch(`${SYNC_CONFIG.serverUrl}/api/sync/status`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.folders) {
+                    Object.keys(data.folders).forEach(remoteName => {
+                        const folder = SYNC_CONFIG.syncFolders.find(f => f.remoteName === remoteName);
+                        if (folder) {
+                            const status = data.folders[remoteName];
+                            folder.status = status.status || 'idle';
+                            folder.files = status.files || 0;
+                            folder.synced = status.synced || 0;
+                            folder.progress = status.progress || 0;
+                        }
+                    });
+                    renderFoldersList();
+                    updateFolderStats();
+                }
+            }
+        } catch (error) {
+            console.error('Error verificando estados:', error);
+        }
+    }
+
+    // ============================================================
+    //  RENDERIZAR LISTA DE CARPETAS
     // ============================================================
 
     function renderFoldersList() {
@@ -739,13 +590,13 @@
             const isError = status === 'error';
             const isStopped = status === 'stopped';
             
-            const statusColor = getStatusColor(status);
             const statusIcon = getStatusIcon(status);
             const statusText = getStatusText(status);
-            const statusClass = `status-${status}`;
+            const statusClass = getStatusClass(status);
+            const statusColor = getStatusColor(status);
 
             return `
-                <div class="folder-item ${statusClass}" style="background:#0f172a;border-radius:10px;padding:12px;border:1px solid ${isSynced ? '#10b981' : isError ? '#ef4444' : isActive ? '#f59e0b' : '#1e293b'};transition:all 0.3s;animation:fadeIn 0.3s ease;">
+                <div class="folder-item ${statusClass}" style="border:1px solid ${isSynced ? '#10b981' : isError ? '#ef4444' : isActive ? '#f59e0b' : '#1e293b'};">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                         <div style="flex:1;min-width:0;overflow:hidden;">
                             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -753,9 +604,7 @@
                                 <span class="folder-name" style="font-weight:500;font-size:0.85rem;color:${isSynced ? '#10b981' : isError ? '#ef4444' : '#f1f5f9'};word-break:break-all;flex:1;">
                                     ${escapeHtml(folder.localPath)}
                                 </span>
-                                <span class="status-badge status-${status}" style="font-size:0.6rem;padding:2px 8px;border-radius:10px;font-weight:500;flex-shrink:0;background:${isSynced ? 'rgba(16,185,129,0.2)' : isError ? 'rgba(239,68,68,0.2)' : isActive ? 'rgba(245,158,11,0.2)' : 'rgba(100,116,139,0.15)'};color:${isSynced ? '#10b981' : isError ? '#ef4444' : isActive ? '#f59e0b' : '#94a3b8'};">
-                                    ${statusIcon} ${statusText}
-                                </span>
+                                <span class="status-badge ${statusClass}">${statusIcon} ${statusText}</span>
                             </div>
                             <div style="font-size:0.7rem;color:#94a3b8;margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                                 <span>☁️ ${escapeHtml(folder.remoteName)}</span>
@@ -766,15 +615,15 @@
                         </div>
                         <div class="folder-actions">
                             ${!isActive ? `
-                                <button class="btn-sync-folder" data-index="${index}" title="Sincronizar carpeta" style="background:none;border:none;color:#10b981;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:0.75rem;transition:all 0.2s;" onmouseover="this.style.background='rgba(16,185,129,0.2)'" onmouseout="this.style.background='transparent'">
+                                <button class="btn-sync-folder" data-index="${index}" title="Sincronizar carpeta">
                                     <i class="fas fa-play"></i>
                                 </button>
                             ` : `
-                                <button class="btn-stop-folder" data-index="${index}" title="Detener sincronización" style="background:none;border:none;color:#fca5a5;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:0.75rem;transition:all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.2)'" onmouseout="this.style.background='transparent'">
+                                <button class="btn-stop-folder" data-index="${index}" title="Detener sincronización">
                                     <i class="fas fa-stop"></i>
                                 </button>
                             `}
-                            <button class="btn-remove-folder" data-index="${index}" title="Eliminar carpeta" style="background:none;border:none;color:#64748b;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:0.75rem;transition:all 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.2)';this.style.color='#ef4444'" onmouseout="this.style.background='transparent';this.style.color='#64748b'">
+                            <button class="btn-remove-folder" data-index="${index}" title="Eliminar carpeta">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
@@ -808,7 +657,7 @@
             btn.addEventListener('click', () => {
                 const index = parseInt(btn.dataset.index);
                 const folder = SYNC_CONFIG.syncFolders[index];
-                if (folder && confirm(`¿Eliminar la carpeta "${folder.localPath}"?\nEsto NO eliminará los archivos de la nube, solo la configuración de sincronización.`)) {
+                if (folder && confirm(`¿Eliminar la carpeta "${folder.localPath}"?`)) {
                     SYNC_CONFIG.syncFolders.splice(index, 1);
                     saveFolders();
                     addLog(`🗑️ Carpeta eliminada: ${folder.localPath}`, 'warning');
@@ -818,7 +667,7 @@
     }
 
     // ============================================================
-    //  FUNCIONES DE SINCRONIZACIÓN POR CARPETA
+    //  FUNCIONES DE SINCRONIZACIÓN
     // ============================================================
 
     async function startFolderSync(index) {
@@ -832,11 +681,6 @@
             saveFolders();
             updateFolderStats();
             addLog(`🚀 Iniciando sincronización: ${folder.localPath} → ${folder.remoteName}`, 'info');
-
-            const statusResponse = await fetch(`${SYNC_CONFIG.serverUrl}/api/sync/status`);
-            if (!statusResponse.ok) {
-                throw new Error('Servidor no disponible');
-            }
 
             const response = await fetch(`${SYNC_CONFIG.serverUrl}/api/sync/start`, {
                 method: 'POST',
@@ -853,10 +697,16 @@
             }
 
             folder.files = data.files || 0;
+            folder.synced = data.synced || 0;
+            folder.progress = data.files > 0 ? Math.round((data.synced / data.files) * 100) : 0;
             folder.status = 'syncing';
             saveFolders();
             addLog(`✅ Sincronización iniciada: ${folder.remoteName}`, 'success');
-            connectToFolderEvents(index);
+            
+            // Conectar a eventos
+            if (!SYNC_CONFIG.eventSource) {
+                connectToEvents();
+            }
 
         } catch (error) {
             folder.status = 'error';
@@ -873,63 +723,92 @@
 
         addLog(`⏹️ Deteniendo sincronización: ${folder.remoteName}`, 'warning');
 
-        fetch(`${SYNC_CONFIG.serverUrl}/api/sync/stop`, { method: 'POST' })
-            .then(() => {
-                folder.status = 'stopped';
-                saveFolders();
-                updateFolderStats();
-                addLog(`⏹️ Detenido: ${folder.remoteName}`, 'warning');
-            })
-            .catch(err => {
-                addLog(`❌ Error al detener: ${err.message}`, 'error');
-            });
+        fetch(`${SYNC_CONFIG.serverUrl}/api/sync/stop`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ remoteFolder: folder.remoteName })
+        })
+        .then(() => {
+            folder.status = 'stopped';
+            saveFolders();
+            updateFolderStats();
+            addLog(`⏹️ Detenido: ${folder.remoteName}`, 'warning');
+        })
+        .catch(err => {
+            addLog(`❌ Error al detener: ${err.message}`, 'error');
+        });
     }
 
     // ============================================================
     //  CONECTAR A EVENTOS
     // ============================================================
 
-    function connectToFolderEvents(index) {
-        const folder = SYNC_CONFIG.syncFolders[index];
-        if (!folder) return;
-
+    function connectToEvents() {
+        if (SYNC_CONFIG.eventSource) {
+            SYNC_CONFIG.eventSource.close();
+        }
         try {
             const eventSource = new EventSource(`${SYNC_CONFIG.serverUrl}/api/sync/events`);
             
             eventSource.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
-                    if (data.event === 'file_synced' && data.folder === folder.remoteName) {
-                        folder.progress = data.progress || folder.progress || 0;
-                        folder.files = data.total || folder.files || 0;
-                        if (data.progress >= 100) {
-                            folder.status = 'completed';
-                        }
-                        saveFolders();
-                        updateFolderStats();
-                    } else if (data.event === 'sync_complete') {
-                        folder.status = 'completed';
-                        folder.progress = 100;
-                        saveFolders();
-                        updateFolderStats();
-                        addLog(`✅ Sincronización completada: ${folder.remoteName}`, 'success');
-                    } else if (data.event === 'sync_error') {
-                        folder.status = 'error';
-                        folder.error = data.message;
-                        saveFolders();
-                        updateFolderStats();
-                        addLog(`❌ Error: ${data.message}`, 'error');
-                    }
+                    handleSyncEvent(data);
                 } catch (e) {}
             };
 
             eventSource.onerror = () => {
-                setTimeout(() => connectToFolderEvents(index), 5000);
+                setTimeout(() => {
+                    if (SYNC_CONFIG.isServerAvailable) {
+                        connectToEvents();
+                    }
+                }, 5000);
             };
 
             SYNC_CONFIG.eventSource = eventSource;
+            addLog('📡 Conectado a eventos en tiempo real', 'info');
         } catch (error) {
-            console.error('Error conectando a eventos:', error);
+            addLog('⚠️ Error al conectar a eventos', 'warning');
+        }
+    }
+
+    function handleSyncEvent(data) {
+        // Buscar la carpeta por remoteName
+        const folder = SYNC_CONFIG.syncFolders.find(f => f.remoteName === data.folder);
+        if (!folder) return;
+
+        switch (data.event) {
+            case 'file_synced':
+                folder.files = data.total || folder.files || 0;
+                folder.synced = data.synced || folder.synced || 0;
+                folder.progress = data.progress || 0;
+                if (data.progress >= 100) {
+                    folder.status = 'completed';
+                }
+                saveFolders();
+                updateFolderStats();
+                break;
+            case 'sync_complete':
+                folder.status = 'completed';
+                folder.progress = 100;
+                folder.files = data.total || folder.files || 0;
+                folder.synced = data.synced || folder.synced || 0;
+                saveFolders();
+                updateFolderStats();
+                addLog(`✅ Sincronización completada: ${folder.remoteName}`, 'success');
+                break;
+            case 'sync_error':
+                folder.status = 'error';
+                folder.error = data.message;
+                saveFolders();
+                updateFolderStats();
+                addLog(`❌ Error: ${data.message}`, 'error');
+                break;
+            case 'file_added':
+            case 'file_changed':
+            case 'file_deleted':
+                addLog(`📄 ${data.event === 'file_added' ? 'Archivo añadido' : data.event === 'file_changed' ? 'Archivo modificado' : 'Archivo eliminado'}: ${data.filename}`, 'info');
+                break;
         }
     }
 
@@ -938,7 +817,6 @@
     // ============================================================
 
     async function syncAllFolders() {
-        const ui = SYNC_CONFIG.uiElements;
         const folders = SYNC_CONFIG.syncFolders;
 
         if (folders.length === 0) {
@@ -946,6 +824,7 @@
             return;
         }
 
+        const ui = SYNC_CONFIG.uiElements;
         ui.syncAllFoldersBtn.style.display = 'none';
         ui.stopAllFoldersBtn.style.display = 'block';
 
@@ -986,7 +865,7 @@
             return;
         }
 
-        if (confirm('¿Eliminar TODAS las carpetas de la lista?\nEsto NO eliminará los archivos de la nube, solo la configuración de sincronización.')) {
+        if (confirm('¿Eliminar TODAS las carpetas de la lista?')) {
             SYNC_CONFIG.syncFolders = [];
             saveFolders();
             addLog('🗑️ Todas las carpetas eliminadas', 'warning');
@@ -994,7 +873,7 @@
     }
 
     // ============================================================
-    //  AGREGAR NUEVA CARPETA (MODAL)
+    //  AGREGAR CARPETA (MODAL)
     // ============================================================
 
     function showAddFolderModal() {
@@ -1095,6 +974,7 @@
                 remoteName: remoteName,
                 status: 'idle',
                 files: 0,
+                synced: 0,
                 progress: 0,
                 addedAt: new Date().toISOString()
             });
@@ -1200,9 +1080,7 @@
             ui.toggleBtn.style.display = 'flex';
         });
 
-        ui.reconnectBtn.addEventListener('click', () => {
-            checkServerStatus();
-        });
+        ui.reconnectBtn.addEventListener('click', checkServerStatus);
 
         ui.checkRemoteBtn.addEventListener('click', async () => {
             const remote = ui.remoteFolder.value.trim();
@@ -1346,19 +1224,16 @@
                 SYNC_CONFIG.reconnectAttempts = 0;
 
                 if (data.running) {
-                    updateStatus('running', `Sincronizando: ${data.localFolder}`);
-                    ui.folderPath.value = data.localFolder;
-                    ui.remoteFolder.value = data.remoteFolder;
-                    ui.startBtn.style.display = 'none';
-                    ui.stopBtn.style.display = 'block';
+                    updateStatus('running', 'Servidor activo');
                 } else {
-                    ui.startBtn.style.display = 'block';
-                    ui.stopBtn.style.display = 'none';
+                    updateStatus('idle', 'Servidor listo');
                 }
 
                 if (!SYNC_CONFIG.eventSource) {
                     connectToEvents();
                 }
+                // Actualizar estados de carpetas
+                checkFolderStatuses();
                 return true;
             }
         } catch (error) {
@@ -1374,36 +1249,6 @@
             return false;
         }
         return false;
-    }
-
-    // ============================================================
-    //  CONECTAR A EVENTOS
-    // ============================================================
-
-    function connectToEvents() {
-        if (SYNC_CONFIG.eventSource) {
-            SYNC_CONFIG.eventSource.close();
-        }
-        try {
-            const eventSource = new EventSource(`${SYNC_CONFIG.serverUrl}/api/sync/events`);
-            eventSource.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    handleSyncEvent(data);
-                } catch (e) {}
-            };
-            eventSource.onerror = () => {
-                setTimeout(() => {
-                    if (SYNC_CONFIG.isServerAvailable) {
-                        connectToEvents();
-                    }
-                }, 5000);
-            };
-            SYNC_CONFIG.eventSource = eventSource;
-            addLog('📡 Conectado a eventos en tiempo real', 'info');
-        } catch (error) {
-            addLog('⚠️ Error al conectar a eventos', 'warning');
-        }
     }
 
     // ============================================================
@@ -1496,10 +1341,6 @@
                 updateStatus('error', 'Carpeta remota no especificada');
                 return;
             }
-            if (SYNC_CONFIG.isRunning) {
-                addLog('⚠️ La sincronización ya está en ejecución', 'warning');
-                return;
-            }
             if (!SYNC_CONFIG.isServerAvailable) {
                 const available = await checkServerStatus();
                 if (!available) {
@@ -1544,10 +1385,16 @@
             if (data.files) {
                 addLog(`📁 ${data.files} archivos encontrados`, 'info');
                 ui.fileCount.textContent = data.files;
+                ui.syncedCount.textContent = data.synced || 0;
+                ui.pendingCount.textContent = data.files - (data.synced || 0);
             }
             if (!SYNC_CONFIG.eventSource) {
                 connectToEvents();
             }
+            
+            // Actualizar la lista de carpetas
+            loadSavedFolders();
+
         } catch (error) {
             addLog(`❌ Error: ${error.message}`, 'error');
             updateStatus('error', `Error: ${error.message}`);
@@ -1576,6 +1423,8 @@
                 updateStatus('idle', 'Sincronización detenida');
                 updateProgress(100, 'Detenido');
                 addLog('✅ Sincronización detenida', 'success');
+                // Actualizar estados
+                checkFolderStatuses();
             })
             .catch(err => {
                 addLog(`⚠️ Error al detener: ${err.message}`, 'warning');
@@ -1583,51 +1432,11 @@
     }
 
     // ============================================================
-    //  MANEJAR EVENTOS
-    // ============================================================
-
-    function handleSyncEvent(data) {
-        const ui = SYNC_CONFIG.uiElements;
-        switch (data.event) {
-            case 'file_added':
-                addLog(`📄 Archivo añadido: ${data.filename}`, 'success');
-                break;
-            case 'file_changed':
-                addLog(`✏️ Archivo modificado: ${data.filename}`, 'info');
-                break;
-            case 'file_deleted':
-                addLog(`🗑️ Archivo eliminado: ${data.filename}`, 'warning');
-                break;
-            case 'folder_added':
-                addLog(`📁 Carpeta creada: ${data.foldername}`, 'info');
-                break;
-            case 'folder_deleted':
-                addLog(`🗑️ Carpeta eliminada: ${data.foldername}`, 'warning');
-                break;
-            case 'sync_complete':
-                addLog(`✅ Sincronización completada`, 'success');
-                updateStatus('running', 'Sincronizado');
-                break;
-            case 'sync_error':
-                addLog(`❌ ${data.message}`, 'error');
-                updateStatus('error', data.message);
-                break;
-            default:
-                addLog(`ℹ️ ${data.message || 'Evento'}`, 'info');
-        }
-        if (data.stats) {
-            ui.fileCount.textContent = data.stats.total || '0';
-            ui.syncedCount.textContent = data.stats.synced || '0';
-            ui.pendingCount.textContent = data.stats.pending || '0';
-        }
-    }
-
-    // ============================================================
     //  INICIALIZACIÓN
     // ============================================================
 
     function initSync() {
-        console.log('🔄 Inicializando sincronizador v7.0 (Indicadores Visuales)...');
+        console.log('🔄 Inicializando sincronizador v7.0 (Múltiples Carpetas)...');
         const checkIcons = setInterval(() => {
             if (document.querySelector('link[href*="font-awesome"]') ||
                 document.querySelector('script[src*="font-awesome"]')) {
@@ -1669,6 +1478,7 @@
                 remoteName: remoteName,
                 status: 'idle',
                 files: 0,
+                synced: 0,
                 progress: 0,
                 addedAt: new Date().toISOString()
             });
