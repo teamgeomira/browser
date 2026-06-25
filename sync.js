@@ -1,12 +1,12 @@
-// sync.js - Sincronizador COMPLETO
-// Se integra con index.html - Interfaz de usuario para sincronización
-// Comunicación con servidor Node.js (server.js) en http://localhost:3001
+// sync.js - Sincronizador COMPLETO FUSIONADO
+// Incluye: Panel de sincronización + Gestor de carpetas
+// Carpetas y archivos sincronizados se muestran en VERDE
 
 (function() {
     'use strict';
 
     // ============================================================
-    //  CONFIGURACIÓN
+    //  CONFIGURACIÓN GLOBAL
     // ============================================================
 
     const SYNC_CONFIG = {
@@ -15,11 +15,12 @@
         isRunning: false,
         isServerAvailable: false,
         eventSource: null,
-        basePath: 'C:/Users/vinic_flqp90p/Videos/',
         uiElements: {},
         serverCheckInterval: null,
         reconnectAttempts: 0,
-        maxReconnectAttempts: 5
+        maxReconnectAttempts: 5,
+        syncFolders: [], // Array de carpetas guardadas
+        currentFolderIndex: -1
     };
 
     // ============================================================
@@ -34,14 +35,48 @@
     }
 
     // ============================================================
-    //  CREAR INTERFAZ DE USUARIO (UI)
+    //  FUNCIONES DE UTILIDAD
+    // ============================================================
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function generateValidId() {
+        return Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 10);
+    }
+
+    function getStatusColor(status) {
+        switch(status) {
+            case 'syncing': return '#10b981';
+            case 'completed': return '#10b981';
+            case 'error': return '#ef4444';
+            case 'stopped': return '#f59e0b';
+            default: return '#64748b';
+        }
+    }
+
+    function getStatusText(status) {
+        switch(status) {
+            case 'syncing': return '🔄 Sincronizando';
+            case 'completed': return '✅ Sincronizado';
+            case 'error': return '❌ Error';
+            case 'stopped': return '⏹️ Detenido';
+            default: return '⏸️ Inactivo';
+        }
+    }
+
+    // ============================================================
+    //  CREAR INTERFAZ COMPLETA (FUSIONADA)
     // ============================================================
 
     function createSyncUI() {
-        // Evitar duplicados
         if (document.getElementById('syncPanel')) return;
 
-        // Estilos adicionales para la interfaz
+        // Estilos adicionales
         const style = document.createElement('style');
         style.textContent = `
             @keyframes spin {
@@ -52,8 +87,13 @@
                 0%, 100% { opacity: 1; }
                 50% { opacity: 0.3; }
             }
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
             .sync-pulse { animation: pulse-dot 1.5s ease-in-out infinite; }
             .sync-spin { animation: spin 2s linear infinite; }
+            .sync-fade-in { animation: fadeIn 0.3s ease; }
             #syncLogContent::-webkit-scrollbar { width: 4px; }
             #syncLogContent::-webkit-scrollbar-track { background: #0f172a; }
             #syncLogContent::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 4px; }
@@ -62,6 +102,29 @@
                 padding: 2px 10px;
                 border-radius: 12px;
                 font-weight: 400;
+            }
+            .folder-item.synced {
+                border-left-color: #10b981 !important;
+                background: rgba(16, 185, 129, 0.1);
+            }
+            .folder-item.synced i {
+                color: #10b981 !important;
+            }
+            .file-card.synced {
+                border-color: #10b981 !important;
+                background: rgba(16, 185, 129, 0.05);
+            }
+            .file-card.synced .file-icon i {
+                color: #10b981 !important;
+            }
+            .file-card.synced .sync-badge {
+                display: inline-block;
+            }
+            .sync-badge {
+                display: none;
+                font-size: 0.6rem;
+                color: #10b981;
+                margin-left: 6px;
             }
         `;
         document.head.appendChild(style);
@@ -73,8 +136,8 @@
             position: fixed;
             bottom: 80px;
             right: 20px;
-            width: 460px;
-            max-height: 650px;
+            width: 480px;
+            max-height: 680px;
             background: #1e293b;
             border: 1px solid #475569;
             border-radius: 16px;
@@ -88,7 +151,6 @@
             transition: all 0.3s ease;
         `;
 
-        // HTML del panel
         syncPanel.innerHTML = `
             <!-- Cabecera -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
@@ -118,106 +180,145 @@
                 </button>
             </div>
 
-            <!-- Estado de sincronización -->
-            <div id="syncStatus" style="background:#0f172a;border-radius:10px;padding:10px 14px;margin-bottom:10px;border:1px solid #334155;">
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <span id="syncStatusDot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#64748b;"></span>
-                    <span id="syncStatusText" style="font-size:0.8rem;color:#94a3b8;">Inactivo</span>
-                </div>
-                <div style="font-size:0.7rem;color:#64748b;margin-top:3px;word-break:break-all;" id="syncStatusDetail">Selecciona una carpeta para empezar</div>
-            </div>
-
-            <!-- Carpeta LOCAL -->
-            <div style="margin-bottom:10px;">
-                <label style="font-size:0.75rem;color:#94a3b8;display:block;margin-bottom:4px;">
-                    <i class="fas fa-folder"></i> Carpeta local
-                </label>
-                <div style="display:flex;gap:8px;">
-                    <input type="text" id="syncFolderPath" placeholder="C:/ruta/a/carpeta" 
-                           style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:#f1f5f9;font-size:0.85rem;font-family:'Inter',sans-serif;outline:none;">
-                    <button id="syncBrowseBtn" style="padding:8px 14px;border-radius:10px;border:none;background:#3b82f6;color:white;cursor:pointer;font-size:0.85rem;font-weight:600;transition:all 0.2s;" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">
-                        <i class="fas fa-folder-open"></i>
-                    </button>
-                </div>
-                <div style="font-size:0.6rem;color:#10b981;margin-top:4px;">
-                    ✅ La carpeta se creará automáticamente si no existe
-                </div>
-            </div>
-
-            <!-- Carpeta en la NUBE -->
-            <div style="margin-bottom:10px;">
-                <label style="font-size:0.75rem;color:#94a3b8;display:block;margin-bottom:4px;">
-                    <i class="fas fa-cloud"></i> Carpeta en la nube
-                </label>
-                <div style="display:flex;gap:8px;">
-                    <input type="text" id="syncRemoteFolder" placeholder="nombre_carpeta" 
-                           style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:#f1f5f9;font-size:0.85rem;font-family:'Inter',sans-serif;outline:none;">
-                    <button id="syncCheckRemoteBtn" style="padding:8px 14px;border-radius:10px;border:none;background:#8b5cf6;color:white;cursor:pointer;font-size:0.7rem;font-weight:600;transition:all 0.2s;" onmouseover="this.style.background='#7c3aed'" onmouseout="this.style.background='#8b5cf6'">
-                        <i class="fas fa-check"></i> Verificar
-                    </button>
-                </div>
-                <div style="font-size:0.6rem;color:#64748b;margin-top:4px;">
-                    💡 Si no existe, se creará automáticamente
-                </div>
-                <div id="syncRemoteStatus" style="font-size:0.65rem;color:#64748b;margin-top:3px;"></div>
-            </div>
-
-            <!-- Botones de control -->
-            <div style="display:flex;gap:8px;margin-bottom:10px;">
-                <button id="syncStartBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#10b981;color:white;cursor:pointer;font-weight:600;font-size:0.85rem;font-family:'Inter',sans-serif;transition:all 0.2s;" onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10b981'">
-                    <i class="fas fa-play"></i> Iniciar
+            <!-- Pestañas -->
+            <div style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid #334155;padding-bottom:8px;">
+                <button class="sync-tab-btn active" data-tab="sync" style="flex:1;padding:8px;border:none;border-radius:8px;background:#3b82f6;color:white;cursor:pointer;font-weight:600;font-size:0.8rem;font-family:'Inter',sans-serif;transition:all 0.2s;">
+                    <i class="fas fa-sync-alt"></i> Sincronizar
                 </button>
-                <button id="syncStopBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#7f1d1d;color:#fca5a5;cursor:pointer;font-weight:600;font-size:0.85rem;font-family:'Inter',sans-serif;display:none;transition:all 0.2s;" onmouseover="this.style.background='#991b1b'" onmouseout="this.style.background='#7f1d1d'">
-                    <i class="fas fa-stop"></i> Detener
+                <button class="sync-tab-btn" data-tab="folders" style="flex:1;padding:8px;border:none;border-radius:8px;background:#0f172a;color:#94a3b8;cursor:pointer;font-weight:600;font-size:0.8rem;font-family:'Inter',sans-serif;transition:all 0.2s;" onmouseover="this.style.background='#1e293b'" onmouseout="this.style.background='#0f172a'">
+                    <i class="fas fa-folder-tree"></i> Carpetas
+                    <span id="folderCountBadge" style="font-size:0.6rem;padding:1px 8px;border-radius:10px;background:#334155;color:#94a3b8;margin-left:4px;">0</span>
                 </button>
             </div>
 
-            <!-- Estadísticas -->
-            <div id="syncStats" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:0.7rem;color:#94a3b8;margin-bottom:10px;">
-                <div style="background:#0f172a;padding:8px 12px;border-radius:8px;text-align:center;border:1px solid #1e293b;">
-                    <span style="display:block;color:#64748b;">📁 Archivos</span>
-                    <span id="syncFileCount" style="font-size:1.1rem;font-weight:600;color:#f1f5f9;">0</span>
+            <!-- Contenido: Pestaña Sincronizar -->
+            <div id="syncTabContent">
+                <!-- Estado de sincronización -->
+                <div id="syncStatus" style="background:#0f172a;border-radius:10px;padding:10px 14px;margin-bottom:10px;border:1px solid #334155;">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <span id="syncStatusDot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#64748b;"></span>
+                        <span id="syncStatusText" style="font-size:0.8rem;color:#94a3b8;">Inactivo</span>
+                    </div>
+                    <div style="font-size:0.7rem;color:#64748b;margin-top:3px;word-break:break-all;" id="syncStatusDetail">Selecciona una carpeta para empezar</div>
                 </div>
-                <div style="background:#0f172a;padding:8px 12px;border-radius:8px;text-align:center;border:1px solid #1e293b;">
-                    <span style="display:block;color:#64748b;">✅ Sincronizados</span>
-                    <span id="syncSyncedCount" style="font-size:1.1rem;font-weight:600;color:#10b981;">0</span>
+
+                <!-- Carpeta LOCAL -->
+                <div style="margin-bottom:10px;">
+                    <label style="font-size:0.75rem;color:#94a3b8;display:block;margin-bottom:4px;">
+                        <i class="fas fa-folder"></i> Carpeta local
+                    </label>
+                    <div style="display:flex;gap:8px;">
+                        <input type="text" id="syncFolderPath" placeholder="C:/ruta/a/carpeta" 
+                               style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:#f1f5f9;font-size:0.85rem;font-family:'Inter',sans-serif;outline:none;">
+                        <button id="syncBrowseBtn" style="padding:8px 14px;border-radius:10px;border:none;background:#3b82f6;color:white;cursor:pointer;font-size:0.85rem;font-weight:600;transition:all 0.2s;" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">
+                            <i class="fas fa-folder-open"></i>
+                        </button>
+                    </div>
+                    <div style="font-size:0.6rem;color:#10b981;margin-top:4px;">
+                        ✅ La carpeta se creará automáticamente si no existe
+                    </div>
                 </div>
-                <div style="background:#0f172a;padding:8px 12px;border-radius:8px;text-align:center;border:1px solid #1e293b;">
-                    <span style="display:block;color:#64748b;">⏳ Pendientes</span>
-                    <span id="syncPendingCount" style="font-size:1.1rem;font-weight:600;color:#f59e0b;">0</span>
+
+                <!-- Carpeta en la NUBE -->
+                <div style="margin-bottom:10px;">
+                    <label style="font-size:0.75rem;color:#94a3b8;display:block;margin-bottom:4px;">
+                        <i class="fas fa-cloud"></i> Carpeta en la nube
+                    </label>
+                    <div style="display:flex;gap:8px;">
+                        <input type="text" id="syncRemoteFolder" placeholder="nombre_carpeta" 
+                               style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:#f1f5f9;font-size:0.85rem;font-family:'Inter',sans-serif;outline:none;">
+                        <button id="syncCheckRemoteBtn" style="padding:8px 14px;border-radius:10px;border:none;background:#8b5cf6;color:white;cursor:pointer;font-size:0.7rem;font-weight:600;transition:all 0.2s;" onmouseover="this.style.background='#7c3aed'" onmouseout="this.style.background='#8b5cf6'">
+                            <i class="fas fa-check"></i> Verificar
+                        </button>
+                    </div>
+                    <div style="font-size:0.6rem;color:#64748b;margin-top:4px;">
+                        💡 Si no existe, se creará automáticamente
+                    </div>
+                    <div id="syncRemoteStatus" style="font-size:0.65rem;color:#64748b;margin-top:3px;"></div>
+                </div>
+
+                <!-- Botones de control -->
+                <div style="display:flex;gap:8px;margin-bottom:10px;">
+                    <button id="syncStartBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#10b981;color:white;cursor:pointer;font-weight:600;font-size:0.85rem;font-family:'Inter',sans-serif;transition:all 0.2s;" onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10b981'">
+                        <i class="fas fa-play"></i> Iniciar
+                    </button>
+                    <button id="syncStopBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#7f1d1d;color:#fca5a5;cursor:pointer;font-weight:600;font-size:0.85rem;font-family:'Inter',sans-serif;display:none;transition:all 0.2s;" onmouseover="this.style.background='#991b1b'" onmouseout="this.style.background='#7f1d1d'">
+                        <i class="fas fa-stop"></i> Detener
+                    </button>
+                </div>
+
+                <!-- Estadísticas -->
+                <div id="syncStats" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:0.7rem;color:#94a3b8;margin-bottom:10px;">
+                    <div style="background:#0f172a;padding:8px 12px;border-radius:8px;text-align:center;border:1px solid #1e293b;">
+                        <span style="display:block;color:#64748b;">📁 Archivos</span>
+                        <span id="syncFileCount" style="font-size:1.1rem;font-weight:600;color:#f1f5f9;">0</span>
+                    </div>
+                    <div style="background:#0f172a;padding:8px 12px;border-radius:8px;text-align:center;border:1px solid #1e293b;">
+                        <span style="display:block;color:#64748b;">✅ Sincronizados</span>
+                        <span id="syncSyncedCount" style="font-size:1.1rem;font-weight:600;color:#10b981;">0</span>
+                    </div>
+                    <div style="background:#0f172a;padding:8px 12px;border-radius:8px;text-align:center;border:1px solid #1e293b;">
+                        <span style="display:block;color:#64748b;">⏳ Pendientes</span>
+                        <span id="syncPendingCount" style="font-size:1.1rem;font-weight:600;color:#f59e0b;">0</span>
+                    </div>
+                </div>
+
+                <!-- Progreso -->
+                <div style="margin-bottom:10px;display:none;" id="syncProgressContainer">
+                    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#94a3b8;margin-bottom:3px;">
+                        <span id="syncProgressText">Sincronizando...</span>
+                        <span id="syncProgressPercent">0%</span>
+                    </div>
+                    <div style="background:#334155;border-radius:10px;height:6px;overflow:hidden;">
+                        <div id="syncProgressBar" style="background:linear-gradient(90deg,#3b82f6,#8b5cf6);height:100%;width:0%;transition:width 0.3s ease;"></div>
+                    </div>
+                </div>
+
+                <!-- Última actividad -->
+                <div style="font-size:0.65rem;color:#64748b;text-align:center;margin-bottom:8px;" id="syncLastActivity">Última actividad: -</div>
+
+                <!-- Log -->
+                <div id="syncLog" style="background:#0f172a;border-radius:8px;padding:8px;max-height:90px;overflow-y:auto;font-size:0.7rem;color:#94a3b8;border:1px solid #1e293b;">
+                    <div id="syncLogContent"></div>
                 </div>
             </div>
 
-            <!-- Progreso -->
-            <div style="margin-bottom:10px;display:none;" id="syncProgressContainer">
-                <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#94a3b8;margin-bottom:3px;">
-                    <span id="syncProgressText">Sincronizando...</span>
-                    <span id="syncProgressPercent">0%</span>
+            <!-- Contenido: Pestaña Carpetas -->
+            <div id="foldersTabContent" style="display:none;">
+                <div style="display:flex;gap:8px;margin-bottom:10px;">
+                    <button id="addFolderBtn" style="flex:1;padding:8px;border-radius:10px;border:none;background:#3b82f6;color:white;cursor:pointer;font-weight:600;font-size:0.8rem;font-family:'Inter',sans-serif;" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">
+                        <i class="fas fa-plus"></i> Agregar Carpeta
+                    </button>
+                    <button id="syncAllFoldersBtn" style="flex:1;padding:8px;border-radius:10px;border:none;background:#8b5cf6;color:white;cursor:pointer;font-weight:600;font-size:0.8rem;font-family:'Inter',sans-serif;" onmouseover="this.style.background='#7c3aed'" onmouseout="this.style.background='#8b5cf6'">
+                        <i class="fas fa-play"></i> Sincronizar Todas
+                    </button>
+                    <button id="stopAllFoldersBtn" style="flex:1;padding:8px;border-radius:10px;border:none;background:#7f1d1d;color:#fca5a5;cursor:pointer;font-weight:600;font-size:0.8rem;font-family:'Inter',sans-serif;display:none;" onmouseover="this.style.background='#991b1b'" onmouseout="this.style.background='#7f1d1d'">
+                        <i class="fas fa-stop"></i> Detener
+                    </button>
                 </div>
-                <div style="background:#334155;border-radius:10px;height:6px;overflow:hidden;">
-                    <div id="syncProgressBar" style="background:linear-gradient(90deg,#3b82f6,#8b5cf6);height:100%;width:0%;transition:width 0.3s ease;"></div>
+
+                <div id="foldersListContainer" style="max-height:300px;overflow-y:auto;">
+                    <div id="foldersList" style="display:flex;flex-direction:column;gap:6px;">
+                        <div style="text-align:center;color:#64748b;padding:30px 10px;font-size:0.85rem;">
+                            <i class="fas fa-folder-open" style="font-size:2rem;display:block;margin-bottom:10px;"></i>
+                            No hay carpetas agregadas
+                            <br><small style="color:#475569;">Presiona "Agregar Carpeta" para comenzar</small>
+                        </div>
+                    </div>
                 </div>
-            </div>
-
-            <!-- Última actividad -->
-            <div style="font-size:0.65rem;color:#64748b;text-align:center;margin-bottom:8px;" id="syncLastActivity">Última actividad: -</div>
-
-            <!-- Log -->
-            <div id="syncLog" style="background:#0f172a;border-radius:8px;padding:8px;max-height:90px;overflow-y:auto;font-size:0.7rem;color:#94a3b8;border:1px solid #1e293b;">
-                <div id="syncLogContent"></div>
             </div>
 
             <!-- Footer -->
-            <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:0.55rem;color:#475569;">
+            <div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:8px;border-top:1px solid #334155;font-size:0.55rem;color:#475569;">
                 <span>🔄 Sincronización en tiempo real</span>
-                <span id="syncVersion">v6.0</span>
+                <span id="syncVersion">v7.0 - Fusionado</span>
             </div>
         `;
 
         document.body.appendChild(syncPanel);
 
         // ============================================================
-        //  BOTÓN FLOTANTE PARA ABRIR EL PANEL
+        //  BOTÓN FLOTANTE PRINCIPAL
         // ============================================================
 
         const toggleBtn = document.createElement('button');
@@ -257,82 +358,11 @@
                 panel.style.display = 'block';
                 toggleBtn.style.display = 'none';
                 checkServerStatus();
+                loadSavedFolders();
             }
         });
 
         document.body.appendChild(toggleBtn);
-
-        // ============================================================
-        //  BOTÓN PARA INICIAR SERVIDOR (DESCARGAR .bat)
-        // ============================================================
-
-        // Agregar botón en el panel de sincronización
-        const startServerBtn = document.createElement('button');
-        startServerBtn.id = 'syncStartServerBtn';
-        startServerBtn.textContent = '🚀 Iniciar servidor local';
-        startServerBtn.style.cssText = `
-            background: #8b5cf6;
-            color: white;
-            border: none;
-            padding: 10px;
-            border-radius: 10px;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 10px;
-            font-weight: 600;
-            font-size: 0.85rem;
-            font-family: 'Inter', sans-serif;
-            transition: all 0.2s;
-        `;
-        startServerBtn.onmouseover = function() {
-            this.style.background = '#7c3aed';
-        };
-        startServerBtn.onmouseout = function() {
-            this.style.background = '#8b5cf6';
-        };
-
-        startServerBtn.addEventListener('click', function() {
-            // Crear el contenido del archivo .bat
-            const batContent = `@echo off
-title Sincronizador - Delad Mapp Online
-echo ========================================
-echo   Sincronizador - Delad Mapp Online
-echo ========================================
-echo.
-cd /d "C:\\Users\\vinic_flqp90p\\Videos"
-echo 🔄 Iniciando servidor...
-start /B node server.js
-echo ✅ Servidor iniciado
-echo.
-echo 🌐 Abriendo navegador...
-timeout /t 2 /nobreak >nul
-start http://localhost:3001
-echo.
-echo ========================================
-echo   Servidor corriendo en:
-echo   http://localhost:3001
-echo ========================================
-pause`;
-
-            // Crear y descargar el archivo .bat
-            const blob = new Blob([batContent], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'iniciar-sync.bat';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            
-            addLog('📥 Archivo "iniciar-sync.bat" descargado. Ejecútalo para iniciar el servidor.', 'info');
-        });
-
-        // Insertar el botón en el panel (después del botón Detener)
-        const stopBtn = document.getElementById('syncStopBtn');
-        if (stopBtn && stopBtn.parentNode) {
-            stopBtn.parentNode.appendChild(startServerBtn);
-        }
 
         // ============================================================
         //  GUARDAR REFERENCIAS A ELEMENTOS UI
@@ -367,17 +397,54 @@ pause`;
             minimizeBtn: document.getElementById('syncMinimizeBtn'),
             closeBtn: document.getElementById('syncCloseBtn'),
             version: document.getElementById('syncVersion'),
-            startServerBtn: startServerBtn
+            // Pestañas
+            tabBtns: document.querySelectorAll('.sync-tab-btn'),
+            syncTab: document.getElementById('syncTabContent'),
+            foldersTab: document.getElementById('foldersTabContent'),
+            // Elementos de carpetas
+            foldersList: document.getElementById('foldersList'),
+            folderCountBadge: document.getElementById('folderCountBadge'),
+            addFolderBtn: document.getElementById('addFolderBtn'),
+            syncAllFoldersBtn: document.getElementById('syncAllFoldersBtn'),
+            stopAllFoldersBtn: document.getElementById('stopAllFoldersBtn')
         };
 
-        // ============================================================
-        //  CONFIGURAR EVENTOS UI
-        // ============================================================
-
+        // Configurar eventos
         setupUIEvents();
+        setupTabEvents();
+
         // Verificar servidor periódicamente
         SYNC_CONFIG.serverCheckInterval = setInterval(checkServerStatus, 30000);
+        loadSavedFolders();
         loadSavedConfig();
+    }
+
+    // ============================================================
+    //  CONFIGURAR EVENTOS DE PESTAÑAS
+    // ============================================================
+
+    function setupTabEvents() {
+        const ui = SYNC_CONFIG.uiElements;
+        ui.tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                ui.tabBtns.forEach(b => {
+                    b.style.background = '#0f172a';
+                    b.style.color = '#94a3b8';
+                });
+                btn.style.background = '#3b82f6';
+                btn.style.color = 'white';
+
+                const tab = btn.dataset.tab;
+                if (tab === 'sync') {
+                    ui.syncTab.style.display = 'block';
+                    ui.foldersTab.style.display = 'none';
+                } else {
+                    ui.syncTab.style.display = 'none';
+                    ui.foldersTab.style.display = 'block';
+                    renderFoldersList();
+                }
+            });
+        });
     }
 
     // ============================================================
@@ -406,7 +473,411 @@ pause`;
     }
 
     // ============================================================
-    //  CONFIGURAR EVENTOS UI
+    //  GESTIÓN DE CARPETAS GUARDADAS
+    // ============================================================
+
+    function loadSavedFolders() {
+        try {
+            const saved = localStorage.getItem('syncFolders');
+            if (saved) {
+                SYNC_CONFIG.syncFolders = JSON.parse(saved);
+                renderFoldersList();
+                updateFolderBadge();
+            }
+        } catch (e) {
+            console.error('Error cargando carpetas:', e);
+        }
+    }
+
+    function saveFolders() {
+        try {
+            localStorage.setItem('syncFolders', JSON.stringify(SYNC_CONFIG.syncFolders));
+            renderFoldersList();
+            updateFolderBadge();
+        } catch (e) {
+            console.error('Error guardando carpetas:', e);
+        }
+    }
+
+    function updateFolderBadge() {
+        const ui = SYNC_CONFIG.uiElements;
+        ui.folderCountBadge.textContent = SYNC_CONFIG.syncFolders.length;
+    }
+
+    function renderFoldersList() {
+        const ui = SYNC_CONFIG.uiElements;
+        const folders = SYNC_CONFIG.syncFolders;
+
+        if (folders.length === 0) {
+            ui.foldersList.innerHTML = `
+                <div style="text-align:center;color:#64748b;padding:30px 10px;font-size:0.85rem;">
+                    <i class="fas fa-folder-open" style="font-size:2rem;display:block;margin-bottom:10px;"></i>
+                    No hay carpetas agregadas
+                    <br><small style="color:#475569;">Presiona "Agregar Carpeta" para comenzar</small>
+                </div>
+            `;
+            return;
+        }
+
+        ui.foldersList.innerHTML = folders.map((folder, index) => {
+            const isSynced = folder.status === 'completed' || folder.status === 'syncing';
+            const statusColor = getStatusColor(folder.status);
+            const statusText = getStatusText(folder.status);
+            const isActive = folder.status === 'syncing';
+
+            return `
+                <div class="folder-item ${isSynced ? 'synced' : ''}" style="background:#0f172a;border-radius:10px;padding:12px;border:1px solid ${isSynced ? '#10b981' : '#1e293b'};transition:all 0.3s;animation:fadeIn 0.3s ease;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div style="flex:1;overflow:hidden;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <i class="fas fa-folder" style="color:${isSynced ? '#10b981' : '#f59e0b'};"></i>
+                                <span style="font-weight:500;font-size:0.85rem;color:${isSynced ? '#10b981' : '#f1f5f9'};word-break:break-all;">${escapeHtml(folder.localPath)}</span>
+                                ${isSynced ? '<span style="font-size:0.6rem;color:#10b981;">✅</span>' : ''}
+                            </div>
+                            <div style="font-size:0.7rem;color:#94a3b8;margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                <span>☁️ ${escapeHtml(folder.remoteName)}</span>
+                                <span style="color:${statusColor};">• ${statusText}</span>
+                                ${folder.files ? `<span>• 📁 ${folder.files} archivos</span>` : ''}
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:4px;flex-shrink:0;">
+                            ${!isActive ? `
+                                <button class="sync-folder-btn" data-index="${index}" style="background:none;border:none;color:#10b981;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:0.75rem;" title="Sincronizar">
+                                    <i class="fas fa-play"></i>
+                                </button>
+                            ` : `
+                                <button class="stop-folder-btn" data-index="${index}" style="background:none;border:none;color:#fca5a5;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:0.75rem;" title="Detener">
+                                    <i class="fas fa-stop"></i>
+                                </button>
+                            `}
+                            <button class="remove-folder-btn" data-index="${index}" style="background:none;border:none;color:#64748b;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:0.75rem;" title="Eliminar">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    ${isActive ? `
+                        <div style="margin-top:6px;background:#334155;border-radius:10px;height:4px;overflow:hidden;">
+                            <div style="background:linear-gradient(90deg,#3b82f6,#8b5cf6);height:100%;width:${folder.progress || 0}%;transition:width 0.3s ease;"></div>
+                        </div>
+                        <div style="font-size:0.6rem;color:#64748b;margin-top:3px;text-align:right;">${folder.progress || 0}%</div>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+
+        // Eventos para los botones de cada carpeta
+        document.querySelectorAll('.sync-folder-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const index = parseInt(btn.dataset.index);
+                startFolderSync(index);
+            });
+        });
+
+        document.querySelectorAll('.stop-folder-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const index = parseInt(btn.dataset.index);
+                stopFolderSync(index);
+            });
+        });
+
+        document.querySelectorAll('.remove-folder-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const index = parseInt(btn.dataset.index);
+                const folder = SYNC_CONFIG.syncFolders[index];
+                if (folder && confirm(`¿Eliminar la carpeta "${folder.localPath}"?`)) {
+                    SYNC_CONFIG.syncFolders.splice(index, 1);
+                    saveFolders();
+                    addLog(`🗑️ Carpeta eliminada: ${folder.localPath}`, 'warning');
+                }
+            });
+        });
+    }
+
+    // ============================================================
+    //  FUNCIONES DE SINCRONIZACIÓN POR CARPETA
+    // ============================================================
+
+    async function startFolderSync(index) {
+        const folder = SYNC_CONFIG.syncFolders[index];
+        if (!folder) return;
+
+        try {
+            folder.status = 'syncing';
+            folder.progress = 0;
+            saveFolders();
+
+            const response = await fetch(`${SYNC_CONFIG.serverUrl}/api/sync/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    localFolder: folder.localPath,
+                    remoteFolder: folder.remoteName
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || data.message || 'Error al iniciar');
+            }
+
+            folder.files = data.files || 0;
+            folder.status = 'syncing';
+            saveFolders();
+            addLog(`🚀 Sincronizando: ${folder.localPath} → ${folder.remoteName}`, 'success');
+            connectToFolderEvents(index);
+
+        } catch (error) {
+            folder.status = 'error';
+            folder.error = error.message;
+            saveFolders();
+            addLog(`❌ Error: ${error.message}`, 'error');
+        }
+    }
+
+    function stopFolderSync(index) {
+        const folder = SYNC_CONFIG.syncFolders[index];
+        if (!folder) return;
+
+        fetch(`${SYNC_CONFIG.serverUrl}/api/sync/stop`, { method: 'POST' })
+            .then(() => {
+                folder.status = 'stopped';
+                saveFolders();
+                addLog(`⏹️ Detenido: ${folder.remoteName}`, 'warning');
+            })
+            .catch(err => {
+                addLog(`❌ Error al detener: ${err.message}`, 'error');
+            });
+    }
+
+    // ============================================================
+    //  CONECTAR A EVENTOS DE UNA CARPETA
+    // ============================================================
+
+    function connectToFolderEvents(index) {
+        const folder = SYNC_CONFIG.syncFolders[index];
+        if (!folder) return;
+
+        try {
+            const eventSource = new EventSource(`${SYNC_CONFIG.serverUrl}/api/sync/events`);
+            
+            eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.event === 'file_synced' && data.folder === folder.remoteName) {
+                        folder.progress = data.progress || folder.progress || 0;
+                        folder.files = data.total || folder.files || 0;
+                        if (data.progress >= 100) {
+                            folder.status = 'completed';
+                        }
+                        saveFolders();
+                    } else if (data.event === 'sync_complete') {
+                        folder.status = 'completed';
+                        folder.progress = 100;
+                        saveFolders();
+                        addLog(`✅ Sincronización completada: ${folder.remoteName}`, 'success');
+                    } else if (data.event === 'sync_error') {
+                        folder.status = 'error';
+                        saveFolders();
+                        addLog(`❌ Error: ${data.message}`, 'error');
+                    }
+                } catch (e) {}
+            };
+
+            eventSource.onerror = () => {
+                setTimeout(() => connectToFolderEvents(index), 5000);
+            };
+
+            SYNC_CONFIG.eventSource = eventSource;
+        } catch (error) {
+            console.error('Error conectando a eventos:', error);
+        }
+    }
+
+    // ============================================================
+    //  SINCRONIZAR TODAS LAS CARPETAS
+    // ============================================================
+
+    async function syncAllFolders() {
+        const ui = SYNC_CONFIG.uiElements;
+        ui.syncAllFoldersBtn.style.display = 'none';
+        ui.stopAllFoldersBtn.style.display = 'block';
+
+        for (let i = 0; i < SYNC_CONFIG.syncFolders.length; i++) {
+            const folder = SYNC_CONFIG.syncFolders[i];
+            if (folder.status !== 'syncing' && folder.status !== 'completed') {
+                await startFolderSync(i);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+
+        ui.syncAllFoldersBtn.style.display = 'block';
+        ui.stopAllFoldersBtn.style.display = 'none';
+    }
+
+    function stopAllFolders() {
+        SYNC_CONFIG.syncFolders.forEach((folder, index) => {
+            if (folder.status === 'syncing') {
+                stopFolderSync(index);
+            }
+        });
+        const ui = SYNC_CONFIG.uiElements;
+        ui.syncAllFoldersBtn.style.display = 'block';
+        ui.stopAllFoldersBtn.style.display = 'none';
+    }
+
+    // ============================================================
+    //  AGREGAR NUEVA CARPETA (Modal simplificado)
+    // ============================================================
+
+    function showAddFolderModal() {
+        // Crear modal simple
+        const overlay = document.createElement('div');
+        overlay.id = 'addFolderModal';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 10000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        `;
+
+        overlay.innerHTML = `
+            <div style="background:#1e293b;border-radius:16px;padding:24px;max-width:450px;width:90%;border:1px solid #475569;">
+                <h3 style="color:#f1f5f9;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
+                    <i class="fas fa-folder-plus" style="color:#60a5fa;"></i>
+                    Agregar Carpeta
+                </h3>
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:0.75rem;color:#94a3b8;display:block;margin-bottom:4px;">Carpeta local</label>
+                    <div style="display:flex;gap:8px;">
+                        <input type="text" id="modalLocalPath" placeholder="C:/ruta/a/carpeta" 
+                               style="flex:1;padding:8px 12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:#f1f5f9;font-size:0.85rem;font-family:'Inter',sans-serif;outline:none;">
+                        <button id="modalBrowseBtn" style="padding:8px 14px;border-radius:10px;border:none;background:#3b82f6;color:white;cursor:pointer;font-size:0.85rem;" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">
+                            <i class="fas fa-folder-open"></i>
+                        </button>
+                    </div>
+                </div>
+                <div style="margin-bottom:16px;">
+                    <label style="font-size:0.75rem;color:#94a3b8;display:block;margin-bottom:4px;">Nombre en la nube</label>
+                    <input type="text" id="modalRemoteName" placeholder="nombre_carpeta" 
+                           style="width:100%;padding:8px 12px;border-radius:10px;border:1px solid #334155;background:#0f172a;color:#f1f5f9;font-size:0.85rem;font-family:'Inter',sans-serif;outline:none;">
+                </div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button id="modalCancelBtn" style="padding:8px 20px;border-radius:10px;border:none;background:#334155;color:#94a3b8;cursor:pointer;font-weight:600;">Cancelar</button>
+                    <button id="modalConfirmBtn" style="padding:8px 20px;border-radius:10px;border:none;background:#10b981;color:white;cursor:pointer;font-weight:600;" onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10b981'">
+                        <i class="fas fa-plus"></i> Agregar
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        // Eventos del modal
+        document.getElementById('modalCancelBtn').addEventListener('click', () => {
+            overlay.remove();
+        });
+
+        document.getElementById('modalConfirmBtn').addEventListener('click', () => {
+            const localPath = document.getElementById('modalLocalPath').value.trim();
+            const remoteName = document.getElementById('modalRemoteName').value.trim();
+
+            if (!localPath) {
+                showToast('⚠️ Ingresa la ruta de la carpeta local', 'warning');
+                return;
+            }
+            if (!remoteName) {
+                showToast('⚠️ Ingresa un nombre para la carpeta en la nube', 'warning');
+                return;
+            }
+
+            const exists = SYNC_CONFIG.syncFolders.some(f => 
+                f.localPath === localPath || f.remoteName === remoteName
+            );
+
+            if (exists) {
+                showToast('⚠️ Esta carpeta ya está agregada', 'warning');
+                return;
+            }
+
+            SYNC_CONFIG.syncFolders.push({
+                id: generateValidId(),
+                localPath: localPath,
+                remoteName: remoteName,
+                status: 'idle',
+                files: 0,
+                progress: 0,
+                addedAt: new Date().toISOString()
+            });
+
+            saveFolders();
+            overlay.remove();
+            showToast(`✅ Carpeta agregada: ${localPath} → ${remoteName}`, 'success');
+            addLog(`📁 Carpeta agregada: ${localPath} → ${remoteName}`, 'success');
+        });
+
+        document.getElementById('modalBrowseBtn').addEventListener('click', () => {
+            if (window.showDirectoryPicker) {
+                window.showDirectoryPicker().then(async (dirHandle) => {
+                    let fullPath = dirHandle.name;
+                    try {
+                        if (dirHandle.getFile) {
+                            const file = await dirHandle.getFile();
+                            if (file && file.path) {
+                                fullPath = file.path;
+                            }
+                        }
+                    } catch (e) {}
+                    if (!fullPath.includes(':') && !fullPath.startsWith('/') && !fullPath.startsWith('\\')) {
+                        fullPath = 'C:/' + fullPath;
+                    }
+                    document.getElementById('modalLocalPath').value = fullPath;
+                    const remoteName = fullPath.split('/').pop().toLowerCase().replace(/\s+/g, '_');
+                    if (!document.getElementById('modalRemoteName').value) {
+                        document.getElementById('modalRemoteName').value = remoteName;
+                    }
+                }).catch(() => {});
+            } else {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.webkitdirectory = true;
+                input.directory = true;
+                input.onchange = (e) => {
+                    if (e.target.files.length > 0) {
+                        const path = e.target.files[0].webkitRelativePath.split('/')[0];
+                        document.getElementById('modalLocalPath').value = 'C:/' + path;
+                        const remoteName = path.toLowerCase().replace(/\s+/g, '_');
+                        if (!document.getElementById('modalRemoteName').value) {
+                            document.getElementById('modalRemoteName').value = remoteName;
+                        }
+                    }
+                };
+                input.click();
+            }
+        });
+
+        // Enter en los campos
+        document.getElementById('modalLocalPath').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('modalConfirmBtn').click();
+        });
+        document.getElementById('modalRemoteName').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('modalConfirmBtn').click();
+        });
+
+        // Cerrar con Escape
+        document.addEventListener('keydown', function handler(e) {
+            if (e.key === 'Escape' && document.getElementById('addFolderModal')) {
+                document.getElementById('addFolderModal').remove();
+                document.removeEventListener('keydown', handler);
+            }
+        });
+    }
+
+    // ============================================================
+    //  EVENTOS UI
     // ============================================================
 
     function setupUIEvents() {
@@ -474,7 +945,7 @@ pause`;
                         }
                     } catch (e) {}
                     if (!fullPath.includes(':') && !fullPath.startsWith('/') && !fullPath.startsWith('\\')) {
-                        fullPath = SYNC_CONFIG.basePath + fullPath;
+                        fullPath = 'C:/' + fullPath;
                     }
                     fullPath = normalizeLocalPath(fullPath);
                     ui.folderPath.value = fullPath;
@@ -496,7 +967,7 @@ pause`;
                 input.onchange = (e) => {
                     if (e.target.files.length > 0) {
                         let path = e.target.files[0].webkitRelativePath.split('/')[0];
-                        let fullPath = SYNC_CONFIG.basePath + path;
+                        let fullPath = 'C:/' + path;
                         fullPath = normalizeLocalPath(fullPath);
                         ui.folderPath.value = fullPath;
                         localStorage.setItem('syncLocalFolder', fullPath);
@@ -552,6 +1023,14 @@ pause`;
         ui.remoteFolder.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') ui.startBtn.click();
         });
+
+        // ============================================================
+        //  EVENTOS DE CARPETAS
+        // ============================================================
+
+        ui.addFolderBtn.addEventListener('click', showAddFolderModal);
+        ui.syncAllFoldersBtn.addEventListener('click', syncAllFolders);
+        ui.stopAllFoldersBtn.addEventListener('click', stopAllFolders);
     }
 
     // ============================================================
@@ -619,7 +1098,6 @@ pause`;
                 } catch (e) {}
             };
             eventSource.onerror = () => {
-                // Intentar reconectar después de 5 segundos
                 setTimeout(() => {
                     if (SYNC_CONFIG.isServerAvailable) {
                         connectToEvents();
@@ -854,7 +1332,7 @@ pause`;
     // ============================================================
 
     function initSync() {
-        console.log('🔄 Inicializando sincronizador v6.0...');
+        console.log('🔄 Inicializando sincronizador v7.0 (Fusionado)...');
         const checkIcons = setInterval(() => {
             if (document.querySelector('link[href*="font-awesome"]') ||
                 document.querySelector('script[src*="font-awesome"]')) {
@@ -862,6 +1340,7 @@ pause`;
                 createSyncUI();
                 addLog('👋 ¡Bienvenido! La carpeta se creará automáticamente', 'info');
                 setTimeout(checkServerStatus, 1500);
+                loadSavedFolders();
             }
         }, 100);
         setTimeout(() => {
@@ -870,13 +1349,14 @@ pause`;
                 createSyncUI();
                 addLog('👋 ¡Bienvenido! La carpeta se creará automáticamente', 'info');
                 setTimeout(checkServerStatus, 1500);
+                loadSavedFolders();
             }
         }, 3000);
-        console.log('✅ Sincronizador v6.0 inicializado');
+        console.log('✅ Sincronizador v7.0 inicializado');
     }
 
     // ============================================================
-    //  EXPORTAR FUNCIONES (para usar desde consola)
+    //  EXPORTAR FUNCIONES
     // ============================================================
 
     window.SyncManager = {
@@ -885,7 +1365,20 @@ pause`;
         stop: stopSync,
         getStatus: () => SYNC_CONFIG.isRunning,
         addLog: addLog,
-        reconnect: checkServerStatus
+        reconnect: checkServerStatus,
+        getFolders: () => SYNC_CONFIG.syncFolders,
+        addFolder: (localPath, remoteName) => {
+            SYNC_CONFIG.syncFolders.push({
+                id: generateValidId(),
+                localPath: localPath,
+                remoteName: remoteName,
+                status: 'idle',
+                files: 0,
+                progress: 0,
+                addedAt: new Date().toISOString()
+            });
+            saveFolders();
+        }
     };
 
     // ============================================================
@@ -897,6 +1390,6 @@ pause`;
     } else {
         setTimeout(initSync, 500);
     }
-    console.log('📦 sync.js v6.0 cargado correctamente');
+    console.log('📦 sync.js v7.0 cargado correctamente');
 
 })();
