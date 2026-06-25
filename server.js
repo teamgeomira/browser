@@ -1,4 +1,4 @@
-// server.js - Sincronizador COMPLETO (CON ncc_nordic)
+// server.js - Sincronizador COMPLETO (CORREGIDO)
 // EJECUTAR: node server.js
 
 const express = require('express');
@@ -7,7 +7,6 @@ const fs = require('fs-extra');
 const path = require('path');
 const chokidar = require('chokidar');
 const { exec } = require('child_process');
-const FormData = require('form-data');
 
 const app = express();
 const PORT = 3001;
@@ -42,12 +41,12 @@ app.get('/', (req, res) => {
 });
 
 // ============================================================
-//  CONFIGURACIÓN - USANDO ncc_nordic (EL QUE FUNCIONA)
+//  CONFIGURACIÓN
 // ============================================================
 
 const CONFIG = {
     CLOUD_NAME: "dc1zqri3o",
-    UPLOAD_PRESET: "ncc_nordic",  // ← ESTE ES EL QUE FUNCIONA
+    UPLOAD_PRESET: "ncc_nordic",  // ← Asegúrate de que existe
     FIREBASE_REST_URL: "https://trip-a9341-default-rtdb.firebaseio.com"
 };
 
@@ -160,41 +159,40 @@ async function firebaseDelete(path) {
 }
 
 // ============================================================
-//  FUNCIÓN PARA CLOUDINARY - USANDO ncc_nordic (IGUAL QUE EL FRONTEND)
+//  FUNCIÓN PARA CLOUDINARY - VERSIÓN CORREGIDA
 // ============================================================
 
 async function uploadToCloudinary(fileBuffer, filename) {
     try {
         console.log(`📤 Subiendo a Cloudinary: ${filename}`);
         console.log(`   📦 Tamaño: ${formatSize(fileBuffer.length)}`);
-        
+
+        // 🔥 Usar Blob + FormData nativo (funciona en Node 18+)
+        const blob = new Blob([fileBuffer]);
         const form = new FormData();
-        form.append('file', fileBuffer, {
-            filename: filename,
-            contentType: 'application/octet-stream'
-        });
+        form.append('file', blob, filename);
         form.append('upload_preset', CONFIG.UPLOAD_PRESET);
 
-        // 🔥 IGUAL QUE EN EL FRONTEND: /auto/upload
-        const url = `https://api.cloudinary.com/v1_1/${CONFIG.CLOUD_NAME}/auto/upload`;
+        // 🔥 Endpoint /raw/upload para archivos arbitrarios
+        const url = `https://api.cloudinary.com/v1_1/${CONFIG.CLOUD_NAME}/raw/upload`;
         console.log(`   🌐 URL: ${url}`);
         console.log(`   📋 Preset: ${CONFIG.UPLOAD_PRESET}`);
-        
+
+        // 🔥 SIN headers: form.getHeaders() (fetch los genera automáticamente)
         const response = await fetch(url, {
             method: 'POST',
-            body: form,
-            headers: form.getHeaders()
+            body: form
         });
-        
+
         const data = await response.json();
-        
+
         if (!response.ok) {
             console.error('❌ Cloudinary error response:', JSON.stringify(data, null, 2));
             console.error('❌ Status:', response.status);
             console.error('❌ StatusText:', response.statusText);
             throw new Error(data.error?.message || 'Error en Cloudinary');
         }
-        
+
         console.log(`✅ Subido a Cloudinary: ${filename}`);
         console.log(`   🔗 URL: ${data.secure_url}`);
         return {
@@ -785,7 +783,7 @@ function openBrowser(url) {
 const server = app.listen(PORT, () => {
     const url = `http://localhost:${PORT}`;
     console.log('═══════════════════════════════════════════════════════════');
-    console.log('🔄 Sincronizador COMPLETO');
+    console.log('🔄 Sincronizador COMPLETO (CORREGIDO)');
     console.log('═══════════════════════════════════════════════════════════');
     console.log(`📍 Puerto: ${PORT}`);
     console.log(`🌐 Abriendo: ${url}`);
