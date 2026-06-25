@@ -1,4 +1,4 @@
-// server.js - Sincronizador COMPLETO (CORREGIDO)
+// server.js - Sincronizador COMPLETO
 // EJECUTAR: node server.js
 
 const express = require('express');
@@ -46,7 +46,7 @@ app.get('/', (req, res) => {
 
 const CONFIG = {
     CLOUD_NAME: "dc1zqri3o",
-    UPLOAD_PRESET: "ncc_nordic",  // ← Asegúrate de que existe
+    UPLOAD_PRESET: "ncc_nordic",
     FIREBASE_REST_URL: "https://trip-a9341-default-rtdb.firebaseio.com"
 };
 
@@ -159,7 +159,7 @@ async function firebaseDelete(path) {
 }
 
 // ============================================================
-//  FUNCIÓN PARA CLOUDINARY - VERSIÓN CORREGIDA
+//  FUNCIÓN PARA CLOUDINARY - CORREGIDA
 // ============================================================
 
 async function uploadToCloudinary(fileBuffer, filename) {
@@ -167,18 +167,16 @@ async function uploadToCloudinary(fileBuffer, filename) {
         console.log(`📤 Subiendo a Cloudinary: ${filename}`);
         console.log(`   📦 Tamaño: ${formatSize(fileBuffer.length)}`);
 
-        // 🔥 Usar Blob + FormData nativo (funciona en Node 18+)
+        // Usar Blob + FormData (funciona en Node 18+)
         const blob = new Blob([fileBuffer]);
         const form = new FormData();
         form.append('file', blob, filename);
         form.append('upload_preset', CONFIG.UPLOAD_PRESET);
 
-        // 🔥 Endpoint /raw/upload para archivos arbitrarios
         const url = `https://api.cloudinary.com/v1_1/${CONFIG.CLOUD_NAME}/raw/upload`;
         console.log(`   🌐 URL: ${url}`);
         console.log(`   📋 Preset: ${CONFIG.UPLOAD_PRESET}`);
 
-        // 🔥 SIN headers: form.getHeaders() (fetch los genera automáticamente)
         const response = await fetch(url, {
             method: 'POST',
             body: form
@@ -783,7 +781,7 @@ function openBrowser(url) {
 const server = app.listen(PORT, () => {
     const url = `http://localhost:${PORT}`;
     console.log('═══════════════════════════════════════════════════════════');
-    console.log('🔄 Sincronizador COMPLETO (CORREGIDO)');
+    console.log('🔄 Sincronizador COMPLETO');
     console.log('═══════════════════════════════════════════════════════════');
     console.log(`📍 Puerto: ${PORT}`);
     console.log(`🌐 Abriendo: ${url}`);
