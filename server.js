@@ -1,4 +1,4 @@
-// server.js - Sincronizador COMPLETO
+// server.js - Servidor COMPLETO con soporte para múltiples carpetas
 // EJECUTAR: node server.js
 
 const express = require('express');
@@ -159,7 +159,7 @@ async function firebaseDelete(path) {
 }
 
 // ============================================================
-//  FUNCIÓN PARA CLOUDINARY - CORREGIDA
+//  FUNCIÓN PARA CLOUDINARY
 // ============================================================
 
 async function uploadToCloudinary(fileBuffer, filename) {
@@ -167,7 +167,6 @@ async function uploadToCloudinary(fileBuffer, filename) {
         console.log(`📤 Subiendo a Cloudinary: ${filename}`);
         console.log(`   📦 Tamaño: ${formatSize(fileBuffer.length)}`);
 
-        // Usar Blob + FormData (funciona en Node 18+)
         const blob = new Blob([fileBuffer]);
         const form = new FormData();
         form.append('file', blob, filename);
@@ -207,7 +206,7 @@ async function uploadToCloudinary(fileBuffer, filename) {
 }
 
 // ============================================================
-//  FUNCIÓN DE SINCRONIZACIÓN
+//  FUNCIÓN DE SINCRONIZACIÓN POR CARPETA
 // ============================================================
 
 async function syncFolder(localPath, remoteFolder) {
@@ -219,6 +218,7 @@ async function syncFolder(localPath, remoteFolder) {
         throw new Error(`No se pudo acceder a la carpeta: ${localPath}`);
     }
     
+    // Crear carpeta remota en Firebase
     await firebasePut(`${remoteFolder}/_folders`, {
         root: {
             name: remoteFolder,
@@ -229,6 +229,7 @@ async function syncFolder(localPath, remoteFolder) {
     });
     console.log(`📁 Carpeta remota creada en Firebase: ${remoteFolder}`);
     
+    // Obtener archivos existentes en Firebase
     const existingData = await firebaseGet(remoteFolder);
     const existingFiles = new Map();
     if (existingData) {
@@ -246,6 +247,7 @@ async function syncFolder(localPath, remoteFolder) {
     }
     console.log(`📊 Archivos existentes en Firebase: ${existingFiles.size}`);
     
+    // Escanear carpeta local
     const localFiles = [];
     const folders = new Set();
     
@@ -291,6 +293,7 @@ async function syncFolder(localPath, remoteFolder) {
         };
     }
     
+    // Crear estructura de carpetas en Firebase
     for (const folder of folders) {
         const folderKey = folder.replace(/\//g, '_');
         await firebasePut(`${remoteFolder}/_folders/${folderKey}`, {
@@ -306,10 +309,11 @@ async function syncFolder(localPath, remoteFolder) {
     let errorCount = 0;
     let errorMessages = [];
     let skippedCount = 0;
+    const totalFiles = localFiles.length;
     
     for (let i = 0; i < localFiles.length; i++) {
         const file = localFiles[i];
-        const progress = Math.round(((i + 1) / localFiles.length) * 100);
+        const progress = Math.round(((i + 1) / totalFiles) * 100);
         
         try {
             const existing = existingFiles.get(file.name);
@@ -319,7 +323,7 @@ async function syncFolder(localPath, remoteFolder) {
                 continue;
             }
             
-            console.log(`📤 Subiendo [${i+1}/${localFiles.length}] ${file.name} (${formatSize(file.size)})`);
+            console.log(`📤 Subiendo [${i+1}/${totalFiles}] ${file.name} (${formatSize(file.size)})`);
             
             const fileBuffer = fs.readFileSync(file.path);
             const cloudinaryResult = await uploadToCloudinary(fileBuffer, file.name);
@@ -351,16 +355,13 @@ async function syncFolder(localPath, remoteFolder) {
             console.log(`✅ Guardado en Firebase: ${file.name} → ${remoteFolder}`);
             syncedCount++;
             
-            syncState.files.total = localFiles.length;
-            syncState.files.synced = syncedCount;
-            syncState.files.pending = localFiles.length - syncedCount;
-            
+            // Emitir progreso
             broadcastEvent({
                 event: 'file_synced',
+                folder: remoteFolder,
                 filename: file.name,
-                folder: file.folder,
                 progress: progress,
-                total: localFiles.length,
+                total: totalFiles,
                 synced: syncedCount
             });
             
@@ -393,6 +394,15 @@ async function syncFolder(localPath, remoteFolder) {
     }
     console.log('═══════════════════════════════════════════════════════════');
     
+    // Emitir evento de completado
+    broadcastEvent({
+        event: 'sync_complete',
+        folder: remoteFolder,
+        total: localFiles.length,
+        synced: syncedCount,
+        errors: errorCount
+    });
+    
     return { 
         success: true, 
         total: localFiles.length, 
@@ -404,7 +414,7 @@ async function syncFolder(localPath, remoteFolder) {
 }
 
 // ============================================================
-//  WATCHER EN TIEMPO REAL
+//  WATCHER EN TIEMPO REAL POR CARPETA
 // ============================================================
 
 function startWatcher(localPath, remoteFolder) {
@@ -449,8 +459,8 @@ function startWatcher(localPath, remoteFolder) {
                             console.log(`🗑️ Eliminado de Firebase: ${fileName}`);
                             broadcastEvent({
                                 event: 'file_deleted',
+                                folder: remoteFolder,
                                 filename: fileName,
-                                folder: folder,
                                 timestamp: new Date().toISOString()
                             });
                             break;
@@ -507,8 +517,8 @@ function startWatcher(localPath, remoteFolder) {
                 console.log(`🔄 Actualizado: ${fileName} → ${folder}`);
                 broadcastEvent({
                     event: 'file_changed',
+                    folder: remoteFolder,
                     filename: fileName,
-                    folder: folder,
                     timestamp: new Date().toISOString()
                 });
             } else {
@@ -516,18 +526,17 @@ function startWatcher(localPath, remoteFolder) {
                 console.log(`✅ Subido: ${fileName} → ${folder}`);
                 broadcastEvent({
                     event: 'file_added',
+                    folder: remoteFolder,
                     filename: fileName,
-                    folder: folder,
                     timestamp: new Date().toISOString()
                 });
             }
-            
-            syncState.files.synced += 1;
             
         } catch (error) {
             console.error(`❌ Error procesando ${fileName}:`, error);
             broadcastEvent({
                 event: 'sync_error',
+                folder: remoteFolder,
                 message: `Error procesando ${fileName}: ${error.message}`,
                 timestamp: new Date().toISOString()
             });
@@ -553,8 +562,8 @@ function startWatcher(localPath, remoteFolder) {
                             console.log(`🗑️ Eliminado de Firebase: ${fileName}`);
                             broadcastEvent({
                                 event: 'file_deleted',
+                                folder: remoteFolder,
                                 filename: fileName,
-                                folder: folder,
                                 timestamp: new Date().toISOString()
                             });
                             break;
@@ -586,6 +595,7 @@ function startWatcher(localPath, remoteFolder) {
             console.error('❌ Watcher error:', error);
             broadcastEvent({
                 event: 'sync_error',
+                folder: remoteFolder,
                 message: error.message,
                 timestamp: new Date().toISOString()
             });
@@ -595,14 +605,12 @@ function startWatcher(localPath, remoteFolder) {
 }
 
 // ============================================================
-//  ESTADO GLOBAL
+//  ESTADO GLOBAL - SOPORTE PARA MÚLTIPLES CARPETAS
 // ============================================================
 
 let syncState = {
     running: false,
-    localFolder: '',
-    remoteFolder: 'shared_files',
-    watcher: null,
+    activeSyncs: {}, // { remoteFolder: { localFolder, watcher, files, progress, status } },
     files: { total: 0, synced: 0, pending: 0 },
     events: [],
     clients: []
@@ -614,6 +622,20 @@ function broadcastEvent(event) {
     syncState.clients.forEach(client => {
         try { client.res.write(`data: ${JSON.stringify(event)}\n\n`); } catch (e) {}
     });
+}
+
+function getFolderStats(remoteFolder) {
+    const active = syncState.activeSyncs[remoteFolder];
+    if (active) {
+        return {
+            total: active.files || 0,
+            synced: active.synced || 0,
+            pending: (active.files || 0) - (active.synced || 0),
+            status: active.status || 'idle',
+            progress: active.progress || 0
+        };
+    }
+    return { total: 0, synced: 0, pending: 0, status: 'idle', progress: 0 };
 }
 
 // ============================================================
@@ -655,11 +677,20 @@ app.post('/api/sync/check-remote-folder', async (req, res) => {
 });
 
 app.get('/api/sync/status', (req, res) => {
+    const folders = {};
+    Object.keys(syncState.activeSyncs).forEach(key => {
+        const active = syncState.activeSyncs[key];
+        folders[key] = {
+            localFolder: active.localFolder,
+            status: active.status || 'idle',
+            files: active.files || 0,
+            synced: active.synced || 0,
+            progress: active.progress || 0
+        };
+    });
     res.json({
         running: syncState.running,
-        localFolder: syncState.localFolder,
-        remoteFolder: syncState.remoteFolder,
-        files: syncState.files,
+        folders: folders,
         server: true,
         timestamp: new Date().toISOString()
     });
@@ -687,62 +718,87 @@ app.post('/api/sync/start', async (req, res) => {
     
     const folderResult = ensureFolder(localFolder);
     
-    if (syncState.running) {
+    // Verificar si ya está sincronizando esta carpeta
+    if (syncState.activeSyncs[remoteFolder] && syncState.activeSyncs[remoteFolder].status === 'syncing') {
         return res.json({
             running: true,
-            localFolder: syncState.localFolder,
-            remoteFolder: syncState.remoteFolder,
-            message: 'Ya está sincronizando'
+            folder: remoteFolder,
+            message: 'Ya está sincronizando esta carpeta'
         });
     }
     
     try {
-        if (syncState.watcher) {
-            syncState.watcher.close();
+        // Detener watcher anterior para esta carpeta si existe
+        if (syncState.activeSyncs[remoteFolder] && syncState.activeSyncs[remoteFolder].watcher) {
+            syncState.activeSyncs[remoteFolder].watcher.close();
         }
         
-        syncState.localFolder = folderResult.path;
-        syncState.remoteFolder = remoteFolder;
-        syncState.running = true;
-        syncState.files.total = 0;
-        syncState.files.synced = 0;
-        syncState.files.pending = 0;
+        // Inicializar estado para esta carpeta
+        syncState.activeSyncs[remoteFolder] = {
+            localFolder: folderResult.path,
+            remoteFolder: remoteFolder,
+            status: 'syncing',
+            files: 0,
+            synced: 0,
+            progress: 0,
+            watcher: null
+        };
         
+        syncState.running = true;
+        
+        // Sincronización inicial
         const result = await syncFolder(folderResult.path, remoteFolder);
         
-        syncState.files.total = result.total;
-        syncState.files.synced = result.synced;
-        syncState.files.pending = result.total - result.synced;
+        // Actualizar estado
+        syncState.activeSyncs[remoteFolder].files = result.total;
+        syncState.activeSyncs[remoteFolder].synced = result.synced;
+        syncState.activeSyncs[remoteFolder].progress = result.total > 0 ? Math.round((result.synced / result.total) * 100) : 100;
+        syncState.activeSyncs[remoteFolder].status = result.synced === result.total ? 'completed' : 'syncing';
         
-        syncState.watcher = startWatcher(folderResult.path, remoteFolder);
+        // Iniciar watcher
+        syncState.activeSyncs[remoteFolder].watcher = startWatcher(folderResult.path, remoteFolder);
         
         res.json({
             success: true,
             localFolder: folderResult.path,
             remoteFolder: remoteFolder,
-            files: syncState.files.total,
-            synced: syncState.files.synced,
-            pending: syncState.files.pending,
+            files: result.total,
+            synced: result.synced,
             created: folderResult.created,
             errors: result.errors || 0,
-            skipped: result.skipped || 0,
-            errorMessages: result.errorMessages || [],
             message: 'Sincronización iniciada'
         });
     } catch (error) {
-        syncState.running = false;
+        if (syncState.activeSyncs[remoteFolder]) {
+            syncState.activeSyncs[remoteFolder].status = 'error';
+        }
         console.error('❌ Error:', error);
         res.status(500).json({ error: error.message, stack: error.stack });
     }
 });
 
 app.post('/api/sync/stop', (req, res) => {
-    if (syncState.watcher) {
-        syncState.watcher.close();
-        syncState.watcher = null;
+    const { remoteFolder } = req.body;
+    
+    if (remoteFolder && syncState.activeSyncs[remoteFolder]) {
+        if (syncState.activeSyncs[remoteFolder].watcher) {
+            syncState.activeSyncs[remoteFolder].watcher.close();
+            syncState.activeSyncs[remoteFolder].watcher = null;
+        }
+        syncState.activeSyncs[remoteFolder].status = 'stopped';
+        res.json({ success: true, folder: remoteFolder, message: 'Sincronización detenida' });
+    } else {
+        // Detener todas
+        Object.keys(syncState.activeSyncs).forEach(key => {
+            if (syncState.activeSyncs[key].watcher) {
+                syncState.activeSyncs[key].watcher.close();
+                syncState.activeSyncs[key].watcher = null;
+            }
+            syncState.activeSyncs[key].status = 'stopped';
+        });
+        syncState.running = false;
+        res.json({ success: true, message: 'Todas las sincronizaciones detenidas' });
     }
-    syncState.running = false;
-    res.json({ success: true, message: 'Sincronización detenida' });
 });
 
 app.get('/api/sync/events', (req, res) => {
@@ -781,13 +837,14 @@ function openBrowser(url) {
 const server = app.listen(PORT, () => {
     const url = `http://localhost:${PORT}`;
     console.log('═══════════════════════════════════════════════════════════');
-    console.log('🔄 Sincronizador COMPLETO');
+    console.log('🔄 Sincronizador COMPLETO (Múltiples Carpetas)');
     console.log('═══════════════════════════════════════════════════════════');
     console.log(`📍 Puerto: ${PORT}`);
     console.log(`🌐 Abriendo: ${url}`);
     console.log('═══════════════════════════════════════════════════════════');
     console.log(`📁 index.html: ${INDEX_PATH}`);
     console.log(`✅ Usa preset: ${CONFIG.UPLOAD_PRESET}`);
+    console.log('✅ Soporte para múltiples carpetas');
     console.log('✅ Sube archivos a Cloudinary');
     console.log('✅ Guarda metadatos en Firebase');
     console.log('═══════════════════════════════════════════════════════════\n');
@@ -797,9 +854,11 @@ const server = app.listen(PORT, () => {
 
 process.on('SIGINT', () => {
     console.log('\n👋 Deteniendo servidor...');
-    if (syncState.watcher) {
-        syncState.watcher.close();
-    }
+    Object.keys(syncState.activeSyncs).forEach(key => {
+        if (syncState.activeSyncs[key].watcher) {
+            syncState.activeSyncs[key].watcher.close();
+        }
+    });
     server.close(() => {
         console.log('✅ Servidor detenido');
         process.exit(0);
