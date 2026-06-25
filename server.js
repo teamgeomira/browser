@@ -1,0 +1,813 @@
+// server.js - Servidor COMPLETO (Sirve index.html + API)
+// EJECUTAR: node server.js
+// Abre automáticamente el navegador con index.html
+
+const express = require('express');
+const cors = require('cors');
+const fs = require('fs-extra');
+const path = require('path');
+const chokidar = require('chokidar');
+const { exec } = require('child_process');
+const FormData = require('form-data');
+
+const app = express();
+const PORT = 3001;
+
+// ============================================================
+//  MIDDLEWARE
+// ============================================================
+
+app.use(cors());
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+
+// Servir archivos estáticos (index.html, tools.js, sync.js)
+app.use(express.static(__dirname));
+
+// ============================================================
+//  VERIFICAR index.html
+// ============================================================
+
+const INDEX_PATH = path.join(__dirname, 'index.html');
+if (!fs.existsSync(INDEX_PATH)) {
+    console.error('❌ ERROR: No se encuentra index.html');
+    console.error(`📁 Buscado en: ${INDEX_PATH}`);
+    console.error('📥 Descárgalo de: https://raw.githubusercontent.com/teamgeomira/browser/main/index.html');
+    process.exit(1);
+}
+console.log('✅ index.html encontrado');
+
+// ============================================================
+//  RUTAS
+// ============================================================
+
+app.get('/', (req, res) => {
+    res.sendFile(INDEX_PATH);
+});
+
+app.get('*', (req, res) => {
+    if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: 'API no encontrada' });
+    }
+    res.sendFile(INDEX_PATH);
+});
+
+// ============================================================
+//  CONFIGURACIÓN
+// ============================================================
+
+const CLOUD_NAME = "dc1zqri3o";
+const UPLOAD_PRESET = "ncc_nordic";
+const FIREBASE_REST_URL = "https://trip-a9341-default-rtdb.firebaseio.com";
+
+// ============================================================
+//  FUNCIONES DE UTILIDAD
+// ============================================================
+
+function normalizePath(inputPath) {
+    if (!inputPath) return '';
+    let cleaned = inputPath.trim();
+    cleaned = cleaned.replace(/\\/g, '/');
+    cleaned = path.resolve(cleaned);
+    cleaned = cleaned.replace(/\\/g, '/');
+    return cleaned;
+}
+
+function ensureFolder(folderPath) {
+    const normalized = normalizePath(folderPath);
+    if (!fs.existsSync(normalized)) {
+        fs.mkdirSync(normalized, { recursive: true });
+        console.log(`📁 Carpeta CREADA: ${normalized}`);
+        return { created: true, path: normalized };
+    }
+    console.log(`📁 Carpeta existe: ${normalized}`);
+    return { created: false, path: normalized };
+}
+
+function formatSize(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function getFileExtension(filename) {
+    return filename.split('.').pop().toLowerCase();
+}
+
+function getFileType(filename) {
+    const ext = getFileExtension(filename);
+    const types = {
+        'jpg': 'image', 'jpeg': 'image', 'png': 'image', 'gif': 'image',
+        'bmp': 'image', 'svg': 'image', 'webp': 'image', 'ico': 'image',
+        'mp4': 'video', 'avi': 'video', 'mov': 'video', 'mkv': 'video',
+        'mp3': 'audio', 'wav': 'audio', 'ogg': 'audio', 'flac': 'audio',
+        'pdf': 'document', 'doc': 'document', 'docx': 'document',
+        'xls': 'document', 'xlsx': 'document', 'ppt': 'document',
+        'pptx': 'document', 'txt': 'document',
+        'zip': 'archive', 'rar': 'archive', '7z': 'archive',
+        'tar': 'archive', 'gz': 'archive', 'bz2': 'archive', 'xz': 'archive',
+        'dwg': 'cad', 'dxf': 'cad', 'geo': 'cad', 'trm': 'cad', 'bup': 'cad'
+    };
+    return types[ext] || 'other';
+}
+
+// ============================================================
+//  FUNCIONES PARA FIREBASE (REST API)
+// ============================================================
+
+async function firebaseGet(path) {
+    try {
+        const response = await fetch(`${FIREBASE_REST_URL}/${path}.json`);
+        return await response.json();
+    } catch (error) {
+        console.error('Error GET Firebase:', error);
+        return null;
+    }
+}
+
+async function firebasePut(path, data) {
+    try {
+        const response = await fetch(`${FIREBASE_REST_URL}/${path}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        return await response.json();
+    } catch (error) {
+        console.error('Error PUT Firebase:', error);
+        return null;
+    }
+}
+
+async function firebasePost(path, data) {
+    try {
+        const response = await fetch(`${FIREBASE_REST_URL}/${path}.json`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        return await response.json();
+    } catch (error) {
+        console.error('Error POST Firebase:', error);
+        return null;
+    }
+}
+
+async function firebaseDelete(path) {
+    try {
+        const response = await fetch(`${FIREBASE_REST_URL}/${path}.json`, {
+            method: 'DELETE'
+        });
+        return response.ok;
+    } catch (error) {
+        console.error('Error DELETE Firebase:', error);
+        return false;
+    }
+}
+
+// ============================================================
+//  FUNCIÓN PARA CLOUDINARY
+// ============================================================
+
+async function uploadToCloudinary(fileBuffer, filename) {
+    try {
+        const form = new FormData();
+        form.append('file', fileBuffer, {
+            filename: filename,
+            contentType: 'application/octet-stream'
+        });
+        form.append('upload_preset', UPLOAD_PRESET);
+
+        const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`, {
+            method: 'POST',
+            body: form,
+            headers: form.getHeaders()
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            console.error('❌ Cloudinary error:', data);
+            throw new Error(data.error?.message || 'Error en Cloudinary');
+        }
+        
+        console.log(`✅ Subido a Cloudinary: ${filename}`);
+        return {
+            success: true,
+            url: data.secure_url,
+            public_id: data.public_id,
+            format: data.format,
+            bytes: data.bytes
+        };
+    } catch (error) {
+        console.error('❌ Error Cloudinary:', error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+// ============================================================
+//  FUNCIÓN DE SINCRONIZACIÓN COMPLETA
+// ============================================================
+
+async function syncFolder(localPath, remoteFolder) {
+    console.log(`🔄 Sincronizando: ${localPath} → Firebase/${remoteFolder}`);
+    console.log('═══════════════════════════════════════════════════════════');
+    
+    const folderCheck = ensureFolder(localPath);
+    if (!folderCheck.path) {
+        throw new Error(`No se pudo acceder a la carpeta: ${localPath}`);
+    }
+    
+    await firebasePut(`${remoteFolder}/_folders`, {
+        root: {
+            name: remoteFolder,
+            path: '/',
+            createdAt: new Date().toISOString(),
+            synced: true
+        }
+    });
+    console.log(`📁 Carpeta remota creada en Firebase: ${remoteFolder}`);
+    
+    const existingData = await firebaseGet(remoteFolder);
+    const existingFiles = new Map();
+    if (existingData) {
+        Object.keys(existingData).forEach(key => {
+            if (key !== '_folders' && key !== '_structure') {
+                const fileData = existingData[key];
+                if (fileData && fileData.filename) {
+                    existingFiles.set(fileData.filename, {
+                        id: key,
+                        ...fileData
+                    });
+                }
+            }
+        });
+    }
+    console.log(`📊 Archivos existentes en Firebase: ${existingFiles.size}`);
+    
+    const localFiles = [];
+    const folders = new Set();
+    
+    function scanDirectory(dir, relativePath = '') {
+        try {
+            const items = fs.readdirSync(dir, { withFileTypes: true });
+            for (const item of items) {
+                const itemPath = path.join(dir, item.name);
+                const relPath = relativePath ? `${relativePath}/${item.name}` : item.name;
+                if (item.isDirectory()) {
+                    folders.add(relPath);
+                    scanDirectory(itemPath, relPath);
+                } else {
+                    const stats = fs.statSync(itemPath);
+                    localFiles.push({
+                        name: item.name,
+                        path: itemPath,
+                        relativePath: relPath,
+                        size: stats.size,
+                        modified: stats.mtime.toISOString(),
+                        created: stats.birthtime.toISOString(),
+                        folder: relativePath || 'general'
+                    });
+                }
+            }
+        } catch (error) {
+            console.error(`❌ Error escaneando ${dir}:`, error);
+        }
+    }
+    
+    scanDirectory(localPath);
+    console.log(`📁 Archivos locales encontrados: ${localFiles.length}`);
+    
+    if (localFiles.length === 0) {
+        console.log('⚠️ No hay archivos para subir');
+        return { 
+            success: true, 
+            total: 0, 
+            synced: 0, 
+            errors: 0,
+            errorMessages: [],
+            message: 'No hay archivos para sincronizar'
+        };
+    }
+    
+    for (const folder of folders) {
+        const folderKey = folder.replace(/\//g, '_');
+        await firebasePut(`${remoteFolder}/_folders/${folderKey}`, {
+            name: folder,
+            path: folder,
+            createdAt: new Date().toISOString(),
+            synced: true
+        });
+        console.log(`📁 Carpeta creada en Firebase: ${folder}`);
+    }
+    
+    let syncedCount = 0;
+    let errorCount = 0;
+    let errorMessages = [];
+    let skippedCount = 0;
+    
+    for (let i = 0; i < localFiles.length; i++) {
+        const file = localFiles[i];
+        const progress = Math.round(((i + 1) / localFiles.length) * 100);
+        
+        try {
+            const existing = existingFiles.get(file.name);
+            if (existing && existing.size === file.size && existing.folder === file.folder) {
+                console.log(`⏭️ Saltando (sin cambios): ${file.name}`);
+                skippedCount++;
+                continue;
+            }
+            
+            console.log(`📤 Subiendo [${i+1}/${localFiles.length}] ${file.name} (${formatSize(file.size)})`);
+            
+            const fileBuffer = fs.readFileSync(file.path);
+            const cloudinaryResult = await uploadToCloudinary(fileBuffer, file.name);
+            
+            if (!cloudinaryResult.success) {
+                console.error(`❌ Error subiendo ${file.name}: ${cloudinaryResult.error}`);
+                errorCount++;
+                errorMessages.push(`${file.name}: ${cloudinaryResult.error}`);
+                continue;
+            }
+            
+            const fileData = {
+                filename: file.name,
+                size: file.size,
+                url: cloudinaryResult.url,
+                type: getFileType(file.name),
+                extension: getFileExtension(file.name),
+                date: new Date().toISOString(),
+                uploadedBy: 'sincronizador_local',
+                folder: file.folder || 'general',
+                cloudinaryId: cloudinaryResult.public_id,
+                localPath: file.path,
+                syncHash: cloudinaryResult.public_id + file.modified,
+                syncedAt: new Date().toISOString(),
+                relativePath: file.relativePath
+            };
+            
+            await firebasePost(remoteFolder, fileData);
+            console.log(`✅ Guardado en Firebase: ${file.name} → ${remoteFolder}`);
+            syncedCount++;
+            
+            syncState.files.total = localFiles.length;
+            syncState.files.synced = syncedCount;
+            syncState.files.pending = localFiles.length - syncedCount;
+            
+            broadcastEvent({
+                event: 'file_synced',
+                filename: file.name,
+                folder: file.folder,
+                progress: progress,
+                total: localFiles.length,
+                synced: syncedCount
+            });
+            
+        } catch (error) {
+            console.error(`❌ Error sincronizando ${file.name}:`, error);
+            errorCount++;
+            errorMessages.push(`${file.name}: ${error.message}`);
+        }
+    }
+    
+    await firebasePut(`${remoteFolder}/_structure`, {
+        lastSync: new Date().toISOString(),
+        totalFiles: localFiles.length,
+        syncedFiles: syncedCount,
+        errorFiles: errorCount,
+        skippedFiles: skippedCount,
+        errors: errorMessages,
+        localFolder: localPath,
+        remoteFolder: remoteFolder
+    });
+    
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log(`✅ Sincronización completada:`);
+    console.log(`   📁 Total archivos: ${localFiles.length}`);
+    console.log(`   ✅ Subidos: ${syncedCount}`);
+    console.log(`   ⏭️ Saltados: ${skippedCount}`);
+    console.log(`   ❌ Errores: ${errorCount}`);
+    if (errorMessages.length > 0) {
+        console.log(`   📋 Errores:\n     ${errorMessages.join('\n     ')}`);
+    }
+    console.log('═══════════════════════════════════════════════════════════');
+    
+    return { 
+        success: true, 
+        total: localFiles.length, 
+        synced: syncedCount, 
+        errors: errorCount,
+        skipped: skippedCount,
+        errorMessages
+    };
+}
+
+// ============================================================
+//  WATCHER EN TIEMPO REAL
+// ============================================================
+
+function startWatcher(localPath, remoteFolder) {
+    console.log(`👀 Monitoreando cambios en: ${localPath}`);
+    console.log(`☁️ Sincronizando a: Firebase/${remoteFolder}`);
+    
+    const processing = new Set();
+    
+    const watcher = chokidar.watch(localPath, {
+        persistent: true,
+        ignoreInitial: true,
+        depth: 10,
+        awaitWriteFinish: {
+            stabilityThreshold: 2000,
+            pollInterval: 100
+        },
+        ignored: /(^|[\/\\])\../
+    });
+    
+    async function processFile(filePath) {
+        const fileName = path.basename(filePath);
+        const relativePath = path.relative(localPath, filePath).replace(/\\/g, '/');
+        const folder = relativePath.includes('/') ? relativePath.split('/')[0] : 'general';
+        const fileKey = filePath;
+        
+        if (processing.has(fileKey)) {
+            console.log(`⏭️ ${fileName} ya está siendo procesado`);
+            return;
+        }
+        
+        processing.add(fileKey);
+        
+        try {
+            if (!fs.existsSync(filePath)) {
+                console.log(`🗑️ Archivo eliminado: ${fileName}`);
+                const existingData = await firebaseGet(`${remoteFolder}?orderBy="filename"&equalTo="${fileName}"`);
+                if (existingData) {
+                    const keys = Object.keys(existingData);
+                    for (const key of keys) {
+                        if (existingData[key].folder === folder) {
+                            await firebaseDelete(`${remoteFolder}/${key}`);
+                            console.log(`🗑️ Eliminado de Firebase: ${fileName}`);
+                            broadcastEvent({
+                                event: 'file_deleted',
+                                filename: fileName,
+                                folder: folder,
+                                timestamp: new Date().toISOString()
+                            });
+                            break;
+                        }
+                    }
+                }
+                return;
+            }
+            
+            const stats = fs.statSync(filePath);
+            if (stats.isDirectory()) return;
+            
+            console.log(`📄 Procesando: ${fileName} (${formatSize(stats.size)})`);
+            
+            const fileBuffer = fs.readFileSync(filePath);
+            const cloudinaryResult = await uploadToCloudinary(fileBuffer, fileName);
+            
+            if (!cloudinaryResult.success) {
+                console.error(`❌ Error subiendo ${fileName}: ${cloudinaryResult.error}`);
+                return;
+            }
+            
+            const fileData = {
+                filename: fileName,
+                size: stats.size,
+                url: cloudinaryResult.url,
+                type: getFileType(fileName),
+                extension: getFileExtension(fileName),
+                date: new Date().toISOString(),
+                uploadedBy: 'sincronizador_local',
+                folder: folder || 'general',
+                cloudinaryId: cloudinaryResult.public_id,
+                localPath: filePath,
+                syncHash: cloudinaryResult.public_id + stats.mtime.getTime(),
+                syncedAt: new Date().toISOString(),
+                relativePath: relativePath
+            };
+            
+            const existingData = await firebaseGet(`${remoteFolder}?orderBy="filename"&equalTo="${fileName}"`);
+            let existingKey = null;
+            
+            if (existingData) {
+                const keys = Object.keys(existingData);
+                for (const key of keys) {
+                    if (existingData[key].folder === folder) {
+                        existingKey = key;
+                        break;
+                    }
+                }
+            }
+            
+            if (existingKey) {
+                await firebasePut(`${remoteFolder}/${existingKey}`, fileData);
+                console.log(`🔄 Actualizado: ${fileName} → ${folder}`);
+                broadcastEvent({
+                    event: 'file_changed',
+                    filename: fileName,
+                    folder: folder,
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                await firebasePost(remoteFolder, fileData);
+                console.log(`✅ Subido: ${fileName} → ${folder}`);
+                broadcastEvent({
+                    event: 'file_added',
+                    filename: fileName,
+                    folder: folder,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+            syncState.files.synced += 1;
+            
+        } catch (error) {
+            console.error(`❌ Error procesando ${fileName}:`, error);
+            broadcastEvent({
+                event: 'sync_error',
+                message: `Error procesando ${fileName}: ${error.message}`,
+                timestamp: new Date().toISOString()
+            });
+        } finally {
+            processing.delete(fileKey);
+        }
+    }
+    
+    watcher
+        .on('add', (filePath) => processFile(filePath))
+        .on('change', (filePath) => processFile(filePath))
+        .on('unlink', (filePath) => {
+            const fileName = path.basename(filePath);
+            const relativePath = path.relative(localPath, filePath).replace(/\\/g, '/');
+            const folder = relativePath.includes('/') ? relativePath.split('/')[0] : 'general';
+            
+            firebaseGet(`${remoteFolder}?orderBy="filename"&equalTo="${fileName}"`).then(existingData => {
+                if (existingData) {
+                    const keys = Object.keys(existingData);
+                    for (const key of keys) {
+                        if (existingData[key].folder === folder) {
+                            firebaseDelete(`${remoteFolder}/${key}`);
+                            console.log(`🗑️ Eliminado de Firebase: ${fileName}`);
+                            broadcastEvent({
+                                event: 'file_deleted',
+                                filename: fileName,
+                                folder: folder,
+                                timestamp: new Date().toISOString()
+                            });
+                            break;
+                        }
+                    }
+                }
+            }).catch(err => console.error('Error eliminando archivo:', err));
+        })
+        .on('addDir', (dirPath) => {
+            const relativePath = path.relative(localPath, dirPath).replace(/\\/g, '/');
+            console.log(`📁 Nueva carpeta local: ${relativePath}`);
+            const folderKey = relativePath.replace(/\//g, '_');
+            firebasePut(`${remoteFolder}/_folders/${folderKey}`, {
+                name: relativePath,
+                path: relativePath,
+                createdAt: new Date().toISOString(),
+                synced: true
+            }).catch(err => console.error('Error creando carpeta remota:', err));
+        })
+        .on('unlinkDir', (dirPath) => {
+            const relativePath = path.relative(localPath, dirPath).replace(/\\/g, '/');
+            console.log(`🗑️ Carpeta local eliminada: ${relativePath}`);
+            const folderKey = relativePath.replace(/\//g, '_');
+            firebaseDelete(`${remoteFolder}/_folders/${folderKey}`).catch(err => {
+                console.error('Error eliminando carpeta remota:', err);
+            });
+        })
+        .on('error', (error) => {
+            console.error('❌ Watcher error:', error);
+            broadcastEvent({
+                event: 'sync_error',
+                message: error.message,
+                timestamp: new Date().toISOString()
+            });
+        });
+    
+    return watcher;
+}
+
+// ============================================================
+//  ESTADO GLOBAL
+// ============================================================
+
+let syncState = {
+    running: false,
+    localFolder: '',
+    remoteFolder: 'shared_files',
+    watcher: null,
+    files: { total: 0, synced: 0, pending: 0 },
+    events: [],
+    clients: []
+};
+
+function broadcastEvent(event) {
+    syncState.events.push(event);
+    if (syncState.events.length > 100) syncState.events.shift();
+    syncState.clients.forEach(client => {
+        try { client.res.write(`data: ${JSON.stringify(event)}\n\n`); } catch (e) {}
+    });
+}
+
+// ============================================================
+//  RUTAS API
+// ============================================================
+
+app.post('/api/sync/check-folder', (req, res) => {
+    const { folder } = req.body;
+    if (!folder) {
+        return res.status(400).json({ error: 'Carpeta no especificada' });
+    }
+    try {
+        const result = ensureFolder(folder);
+        res.json({
+            exists: true,
+            path: result.path,
+            originalPath: folder,
+            isDirectory: true,
+            created: result.created,
+            message: result.created ? 'Carpeta creada automáticamente' : 'Carpeta existe'
+        });
+    } catch (error) {
+        res.status(500).json({ exists: false, error: error.message, path: folder });
+    }
+});
+
+app.post('/api/sync/check-remote-folder', async (req, res) => {
+    const { remoteFolder } = req.body;
+    if (!remoteFolder) {
+        return res.status(400).json({ error: 'Nombre de carpeta remota no especificado' });
+    }
+    try {
+        const data = await firebaseGet(`${remoteFolder}/_folders`);
+        const exists = data !== null && data !== undefined;
+        res.json({ exists: exists, remoteFolder: remoteFolder, canCreate: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/sync/status', (req, res) => {
+    res.json({
+        running: syncState.running,
+        localFolder: syncState.localFolder,
+        remoteFolder: syncState.remoteFolder,
+        files: syncState.files,
+        server: true,
+        timestamp: new Date().toISOString()
+    });
+});
+
+app.post('/api/sync/start', async (req, res) => {
+    let { localFolder, remoteFolder } = req.body;
+    
+    if (!localFolder) {
+        return res.status(400).json({ error: 'Carpeta local no especificada' });
+    }
+    
+    localFolder = normalizePath(localFolder);
+    console.log(`📂 Carpeta local normalizada: ${localFolder}`);
+    
+    if (!remoteFolder) {
+        remoteFolder = path.basename(localFolder).toLowerCase().replace(/\s+/g, '_');
+    }
+    
+    if (!remoteFolder.match(/^[a-zA-Z0-9_\-]+$/)) {
+        return res.status(400).json({
+            error: 'Nombre de carpeta remota inválido. Solo letras, números, guiones y guión bajo.'
+        });
+    }
+    
+    const folderResult = ensureFolder(localFolder);
+    
+    if (syncState.running) {
+        return res.json({
+            running: true,
+            localFolder: syncState.localFolder,
+            remoteFolder: syncState.remoteFolder,
+            message: 'Ya está sincronizando'
+        });
+    }
+    
+    try {
+        if (syncState.watcher) {
+            syncState.watcher.close();
+        }
+        
+        syncState.localFolder = folderResult.path;
+        syncState.remoteFolder = remoteFolder;
+        syncState.running = true;
+        syncState.files.total = 0;
+        syncState.files.synced = 0;
+        syncState.files.pending = 0;
+        
+        const result = await syncFolder(folderResult.path, remoteFolder);
+        
+        syncState.files.total = result.total;
+        syncState.files.synced = result.synced;
+        syncState.files.pending = result.total - result.synced;
+        
+        syncState.watcher = startWatcher(folderResult.path, remoteFolder);
+        
+        res.json({
+            success: true,
+            localFolder: folderResult.path,
+            remoteFolder: remoteFolder,
+            files: syncState.files.total,
+            synced: syncState.files.synced,
+            pending: syncState.files.pending,
+            created: folderResult.created,
+            errors: result.errors || 0,
+            skipped: result.skipped || 0,
+            errorMessages: result.errorMessages || [],
+            message: 'Sincronización iniciada'
+        });
+    } catch (error) {
+        syncState.running = false;
+        console.error('❌ Error:', error);
+        res.status(500).json({ error: error.message, stack: error.stack });
+    }
+});
+
+app.post('/api/sync/stop', (req, res) => {
+    if (syncState.watcher) {
+        syncState.watcher.close();
+        syncState.watcher = null;
+    }
+    syncState.running = false;
+    res.json({ success: true, message: 'Sincronización detenida' });
+});
+
+app.get('/api/sync/events', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    
+    syncState.events.forEach(event => {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+    });
+    
+    const client = { res };
+    syncState.clients.push(client);
+    
+    req.on('close', () => {
+        syncState.clients = syncState.clients.filter(c => c !== client);
+    });
+});
+
+// ============================================================
+//  INICIAR SERVIDOR Y ABRIR NAVEGADOR
+// ============================================================
+
+function openBrowser(url) {
+    const start = process.platform === 'win32' ? 'start' : process.platform === 'darwin' ? 'open' : 'xdg-open';
+    exec(`${start} ${url}`, (err) => {
+        if (err) {
+            console.log(`🌐 Abre manualmente: ${url}`);
+        } else {
+            console.log(`🌐 Navegador abierto: ${url}`);
+        }
+    });
+}
+
+const server = app.listen(PORT, () => {
+    const url = `http://localhost:${PORT}`;
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('🔄 Sincronizador COMPLETO');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log(`📍 Puerto: ${PORT}`);
+    console.log(`🌐 Abriendo: ${url}`);
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log(`📁 index.html: ${INDEX_PATH}`);
+    console.log('✅ Sirve index.html + API');
+    console.log('✅ Usa preset: ncc_nordic');
+    console.log('✅ Sube archivos a Cloudinary');
+    console.log('✅ Guarda metadatos en Firebase');
+    console.log('✅ Monitorea cambios en tiempo real');
+    console.log('═══════════════════════════════════════════════════════════\n');
+    
+    // Abrir navegador después de 1 segundo
+    setTimeout(() => openBrowser(url), 1000);
+});
+
+process.on('SIGINT', () => {
+    console.log('\n👋 Deteniendo servidor...');
+    if (syncState.watcher) {
+        syncState.watcher.close();
+    }
+    server.close(() => {
+        console.log('✅ Servidor detenido');
+        process.exit(0);
+    });
+});
+
+module.exports = { app, syncState };
