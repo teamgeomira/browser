@@ -1,90 +1,72 @@
-// sync.js - Sincronizador COMPLETO
-// Se ejecuta desde index.html - Inicia el servidor automáticamente
+// sync.js - Sincronizador COMPLETO para Delad Mapp Online
+// Se integra con index.html - Interfaz de usuario para sincronización
+// Comunicación con servidor Node.js (server.js) en http://localhost:3001
 
 (function() {
     'use strict';
+
+    // ============================================================
+    //  CONFIGURACIÓN
+    // ============================================================
 
     const SYNC_CONFIG = {
         serverPort: 3001,
         serverUrl: 'http://localhost:3001',
         isRunning: false,
         isServerAvailable: false,
-        serverCheckInterval: null,
         eventSource: null,
         basePath: 'C:/Users/vinic_flqp90p/Videos/',
-        uiElements: {}
+        uiElements: {},
+        serverCheckInterval: null,
+        reconnectAttempts: 0,
+        maxReconnectAttempts: 5
     };
 
     // ============================================================
-    //  INICIAR SERVIDOR NODE.JS AUTOMÁTICAMENTE
+    //  FUNCIÓN PARA NORMALIZAR RUTAS LOCALES
     // ============================================================
 
-    function startNodeServer() {
-        console.log('🔄 Intentando iniciar servidor Node.js...');
-        
-        // Verificar si el servidor ya está corriendo
-        fetch(`${SYNC_CONFIG.serverUrl}/api/sync/status`)
-            .then(response => {
-                if (response.ok) {
-                    console.log('✅ Servidor ya está corriendo');
-                    checkServerStatus();
-                    return;
-                }
-            })
-            .catch(() => {
-                // El servidor no está corriendo, iniciarlo
-                console.log('🚀 Iniciando servidor Node.js en segundo plano...');
-                
-                // Detectar si estamos en un entorno Node.js (para la extensión)
-                if (typeof require !== 'undefined' && typeof module !== 'undefined') {
-                    // Estamos en Node.js, podemos iniciar el servidor directamente
-                    try {
-                        const { exec } = require('child_process');
-                        const path = require('path');
-                        const serverPath = path.join(__dirname, 'server.js');
-                        
-                        // Iniciar el servidor como proceso hijo
-                        const serverProcess = exec(`node "${serverPath}"`, {
-                            cwd: __dirname,
-                            detached: true,
-                            stdio: 'ignore'
-                        });
-                        
-                        serverProcess.unref();
-                        console.log('✅ Servidor iniciado como proceso hijo');
-                        
-                        // Esperar a que el servidor esté listo
-                        setTimeout(checkServerStatus, 3000);
-                    } catch (error) {
-                        console.error('❌ Error iniciando servidor:', error);
-                        showToast('Error iniciando servidor. Ejecuta: node server.js', true);
-                    }
-                } else {
-                    // Estamos en el navegador, mostrar instrucciones
-                    showToast('⚠️ Servidor no disponible. Asegúrate de ejecutar: node server.js', true);
-                }
-            });
+    function normalizeLocalPath(path) {
+        if (!path) return '';
+        let cleaned = path.trim().replace(/\\/g, '/');
+        cleaned = cleaned.replace(/\/+/g, '/');
+        return cleaned;
     }
 
     // ============================================================
-    //  CREAR INTERFAZ DE USUARIO (DENTRO DEL INDEX)
+    //  CREAR INTERFAZ DE USUARIO (UI)
     // ============================================================
-    
+
     function createSyncUI() {
+        // Evitar duplicados
         if (document.getElementById('syncPanel')) return;
-        
+
+        // Estilos adicionales para la interfaz
         const style = document.createElement('style');
         style.textContent = `
-            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-            @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            @keyframes pulse-dot {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.3; }
+            }
             .sync-pulse { animation: pulse-dot 1.5s ease-in-out infinite; }
             .sync-spin { animation: spin 2s linear infinite; }
             #syncLogContent::-webkit-scrollbar { width: 4px; }
             #syncLogContent::-webkit-scrollbar-track { background: #0f172a; }
             #syncLogContent::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 4px; }
+            #syncPanel .sync-status-badge {
+                font-size: 0.6rem;
+                padding: 2px 10px;
+                border-radius: 12px;
+                font-weight: 400;
+            }
         `;
         document.head.appendChild(style);
-        
+
+        // Panel principal
         const syncPanel = document.createElement('div');
         syncPanel.id = 'syncPanel';
         syncPanel.style.cssText = `
@@ -105,14 +87,15 @@
             color: #e2e8f0;
             transition: all 0.3s ease;
         `;
-        
+
+        // HTML del panel
         syncPanel.innerHTML = `
             <!-- Cabecera -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
                 <h3 style="font-size:1rem;font-weight:600;color:#f1f5f9;display:flex;align-items:center;gap:8px;">
                     <i class="fas fa-cloud-upload-alt" style="color:#60a5fa;"></i>
                     Sincronización
-                    <span id="syncStatusBadge" style="font-size:0.6rem;padding:2px 10px;border-radius:12px;background:#334155;color:#94a3b8;font-weight:400;">OFF</span>
+                    <span id="syncStatusBadge" class="sync-status-badge" style="background:#334155;color:#94a3b8;">OFF</span>
                 </h3>
                 <div style="display:flex;gap:6px;">
                     <button id="syncMinimizeBtn" style="background:none;border:none;color:#94a3b8;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:0.9rem;transition:all 0.2s;" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='transparent'">
@@ -123,7 +106,7 @@
                     </button>
                 </div>
             </div>
-            
+
             <!-- Estado del servidor -->
             <div id="syncServerStatus" style="background:#0f172a;border-radius:10px;padding:10px 14px;margin-bottom:10px;border:1px solid #334155;display:flex;align-items:center;justify-content:space-between;">
                 <div style="display:flex;align-items:center;gap:10px;">
@@ -134,7 +117,7 @@
                     <i class="fas fa-sync-alt"></i> Reconectar
                 </button>
             </div>
-            
+
             <!-- Estado de sincronización -->
             <div id="syncStatus" style="background:#0f172a;border-radius:10px;padding:10px 14px;margin-bottom:10px;border:1px solid #334155;">
                 <div style="display:flex;align-items:center;gap:10px;">
@@ -143,7 +126,7 @@
                 </div>
                 <div style="font-size:0.7rem;color:#64748b;margin-top:3px;word-break:break-all;" id="syncStatusDetail">Selecciona una carpeta para empezar</div>
             </div>
-            
+
             <!-- Carpeta LOCAL -->
             <div style="margin-bottom:10px;">
                 <label style="font-size:0.75rem;color:#94a3b8;display:block;margin-bottom:4px;">
@@ -160,7 +143,7 @@
                     ✅ La carpeta se creará automáticamente si no existe
                 </div>
             </div>
-            
+
             <!-- Carpeta en la NUBE -->
             <div style="margin-bottom:10px;">
                 <label style="font-size:0.75rem;color:#94a3b8;display:block;margin-bottom:4px;">
@@ -178,7 +161,7 @@
                 </div>
                 <div id="syncRemoteStatus" style="font-size:0.65rem;color:#64748b;margin-top:3px;"></div>
             </div>
-            
+
             <!-- Botones de control -->
             <div style="display:flex;gap:8px;margin-bottom:10px;">
                 <button id="syncStartBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#10b981;color:white;cursor:pointer;font-weight:600;font-size:0.85rem;font-family:'Inter',sans-serif;transition:all 0.2s;" onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10b981'">
@@ -188,7 +171,7 @@
                     <i class="fas fa-stop"></i> Detener
                 </button>
             </div>
-            
+
             <!-- Estadísticas -->
             <div id="syncStats" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:0.7rem;color:#94a3b8;margin-bottom:10px;">
                 <div style="background:#0f172a;padding:8px 12px;border-radius:8px;text-align:center;border:1px solid #1e293b;">
@@ -204,7 +187,7 @@
                     <span id="syncPendingCount" style="font-size:1.1rem;font-weight:600;color:#f59e0b;">0</span>
                 </div>
             </div>
-            
+
             <!-- Progreso -->
             <div style="margin-bottom:10px;display:none;" id="syncProgressContainer">
                 <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#94a3b8;margin-bottom:3px;">
@@ -215,25 +198,28 @@
                     <div id="syncProgressBar" style="background:linear-gradient(90deg,#3b82f6,#8b5cf6);height:100%;width:0%;transition:width 0.3s ease;"></div>
                 </div>
             </div>
-            
+
             <!-- Última actividad -->
             <div style="font-size:0.65rem;color:#64748b;text-align:center;margin-bottom:8px;" id="syncLastActivity">Última actividad: -</div>
-            
+
             <!-- Log -->
             <div id="syncLog" style="background:#0f172a;border-radius:8px;padding:8px;max-height:90px;overflow-y:auto;font-size:0.7rem;color:#94a3b8;border:1px solid #1e293b;">
                 <div id="syncLogContent"></div>
             </div>
-            
+
             <!-- Footer -->
             <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:0.55rem;color:#475569;">
                 <span>🔄 Sincronización en tiempo real</span>
-                <span id="syncVersion">v6.0 - Auto iniciar</span>
+                <span id="syncVersion">v6.0</span>
             </div>
         `;
-        
+
         document.body.appendChild(syncPanel);
-        
-        // Botón flotante
+
+        // ============================================================
+        //  BOTÓN FLOTANTE PARA ABRIR EL PANEL
+        // ============================================================
+
         const toggleBtn = document.createElement('button');
         toggleBtn.id = 'syncToggleBtn';
         toggleBtn.style.cssText = `
@@ -257,14 +243,14 @@
         `;
         toggleBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
         toggleBtn.title = 'Sincronización - Panel de Control';
-        
+
         toggleBtn.addEventListener('mouseenter', () => {
             toggleBtn.style.transform = 'scale(1.1)';
         });
         toggleBtn.addEventListener('mouseleave', () => {
             toggleBtn.style.transform = 'scale(1)';
         });
-        
+
         toggleBtn.addEventListener('click', () => {
             const panel = document.getElementById('syncPanel');
             if (panel.style.display === 'none' || panel.style.display === '') {
@@ -273,10 +259,13 @@
                 checkServerStatus();
             }
         });
-        
+
         document.body.appendChild(toggleBtn);
-        
-        // Guardar referencias
+
+        // ============================================================
+        //  GUARDAR REFERENCIAS A ELEMENTOS UI
+        // ============================================================
+
         SYNC_CONFIG.uiElements = {
             panel: syncPanel,
             toggleBtn: toggleBtn,
@@ -307,16 +296,21 @@
             closeBtn: document.getElementById('syncCloseBtn'),
             version: document.getElementById('syncVersion')
         };
-        
+
+        // ============================================================
+        //  CONFIGURAR EVENTOS UI
+        // ============================================================
+
         setupUIEvents();
-        SYNC_CONFIG.serverCheckInterval = setInterval(checkServerStatus, 10000);
+        // Verificar servidor periódicamente
+        SYNC_CONFIG.serverCheckInterval = setInterval(checkServerStatus, 30000);
         loadSavedConfig();
     }
-    
+
     // ============================================================
     //  CARGAR CONFIGURACIÓN GUARDADA
     // ============================================================
-    
+
     function loadSavedConfig() {
         const ui = SYNC_CONFIG.uiElements;
         const savedLocal = localStorage.getItem('syncLocalFolder');
@@ -337,14 +331,15 @@
             ui.remoteStatus.style.color = '#94a3b8';
         }
     }
-    
+
     // ============================================================
-    //  EVENTOS UI
+    //  CONFIGURAR EVENTOS UI
     // ============================================================
-    
+
     function setupUIEvents() {
         const ui = SYNC_CONFIG.uiElements;
-        
+
+        // Minimizar / Cerrar
         ui.minimizeBtn.addEventListener('click', () => {
             ui.panel.style.display = 'none';
             ui.toggleBtn.style.display = 'flex';
@@ -353,10 +348,13 @@
             ui.panel.style.display = 'none';
             ui.toggleBtn.style.display = 'flex';
         });
+
+        // Reconectar servidor
         ui.reconnectBtn.addEventListener('click', () => {
             checkServerStatus();
         });
-        
+
+        // Verificar carpeta remota
         ui.checkRemoteBtn.addEventListener('click', async () => {
             const remote = ui.remoteFolder.value.trim();
             if (!remote) {
@@ -388,7 +386,8 @@
                 ui.remoteStatus.style.color = '#ef4444';
             }
         });
-        
+
+        // Seleccionar carpeta local
         ui.browseBtn.addEventListener('click', () => {
             if (window.showDirectoryPicker) {
                 window.showDirectoryPicker().then(async (dirHandle) => {
@@ -441,12 +440,15 @@
                 input.click();
             }
         });
-        
-        // BOTÓN INICIAR
+
+        // ============================================================
+        //  BOTÓN INICIAR
+        // ============================================================
+
         ui.startBtn.addEventListener('click', async () => {
             let local = ui.folderPath.value.trim();
             const remote = ui.remoteFolder.value.trim();
-            
+
             if (!local) {
                 addLog('⚠️ Selecciona una carpeta local primero', 'warning');
                 updateStatus('error', 'Selecciona una carpeta local');
@@ -461,13 +463,16 @@
                 addLog('❌ Nombre de carpeta remota inválido', 'error');
                 return;
             }
-            
+
             local = normalizeLocalPath(local);
             ui.folderPath.value = local;
             await startSync(local, remote);
         });
-        
+
+        // Botón Detener
         ui.stopBtn.addEventListener('click', stopSync);
+
+        // Enter en campos de texto
         ui.folderPath.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') ui.startBtn.click();
         });
@@ -475,22 +480,11 @@
             if (e.key === 'Enter') ui.startBtn.click();
         });
     }
-    
-    // ============================================================
-    //  NORMALIZAR RUTA
-    // ============================================================
-    
-    function normalizeLocalPath(path) {
-        if (!path) return '';
-        let cleaned = path.trim().replace(/\\/g, '/');
-        cleaned = cleaned.replace(/\/+/g, '/');
-        return cleaned;
-    }
-    
+
     // ============================================================
     //  VERIFICAR SERVIDOR
     // ============================================================
-    
+
     async function checkServerStatus() {
         const ui = SYNC_CONFIG.uiElements;
         try {
@@ -500,7 +494,10 @@
                 ui.serverDot.style.background = '#10b981';
                 ui.serverText.textContent = '✅ Servidor conectado';
                 ui.serverText.style.color = '#6ee7b7';
+                ui.serverDot.className = '';
                 SYNC_CONFIG.isServerAvailable = true;
+                SYNC_CONFIG.reconnectAttempts = 0;
+
                 if (data.running) {
                     updateStatus('running', `Sincronizando: ${data.localFolder}`);
                     ui.folderPath.value = data.localFolder;
@@ -511,6 +508,7 @@
                     ui.startBtn.style.display = 'block';
                     ui.stopBtn.style.display = 'none';
                 }
+
                 if (!SYNC_CONFIG.eventSource) {
                     connectToEvents();
                 }
@@ -520,19 +518,21 @@
             ui.serverDot.style.background = '#ef4444';
             ui.serverText.textContent = '❌ Servidor no disponible';
             ui.serverText.style.color = '#fca5a5';
+            ui.serverDot.className = 'sync-pulse';
             SYNC_CONFIG.isServerAvailable = false;
-            addLog('⚠️ Servidor no disponible. Iniciando automáticamente...', 'warning');
-            
-            // Intentar iniciar el servidor automáticamente
-            startNodeServer();
+            if (SYNC_CONFIG.reconnectAttempts === 0) {
+                addLog('⚠️ Servidor no disponible. Ejecuta: node server.js', 'error');
+            }
+            SYNC_CONFIG.reconnectAttempts++;
+            return false;
         }
         return false;
     }
-    
+
     // ============================================================
-    //  CONECTAR A EVENTOS
+    //  CONECTAR A EVENTOS (SSE)
     // ============================================================
-    
+
     function connectToEvents() {
         if (SYNC_CONFIG.eventSource) {
             SYNC_CONFIG.eventSource.close();
@@ -546,7 +546,12 @@
                 } catch (e) {}
             };
             eventSource.onerror = () => {
-                setTimeout(connectToEvents, 5000);
+                // Intentar reconectar después de 5 segundos
+                setTimeout(() => {
+                    if (SYNC_CONFIG.isServerAvailable) {
+                        connectToEvents();
+                    }
+                }, 5000);
             };
             SYNC_CONFIG.eventSource = eventSource;
             addLog('📡 Conectado a eventos en tiempo real', 'info');
@@ -554,11 +559,11 @@
             addLog('⚠️ Error al conectar a eventos', 'warning');
         }
     }
-    
+
     // ============================================================
     //  ESTADO Y LOGGING
     // ============================================================
-    
+
     function updateStatus(status, message) {
         const ui = SYNC_CONFIG.uiElements;
         const dotColors = {
@@ -589,7 +594,7 @@
         ui.statusBadge.style.background = badgeColors[status] || '#334155';
         ui.statusBadge.style.color = status === 'idle' ? '#94a3b8' : 'white';
     }
-    
+
     function addLog(message, type = 'info') {
         const ui = SYNC_CONFIG.uiElements;
         const timestamp = new Date().toLocaleTimeString('sv-SE');
@@ -614,7 +619,7 @@
         }
         ui.lastActivity.textContent = `Última actividad: ${timestamp}`;
     }
-    
+
     function updateProgress(percent, text = 'Sincronizando...') {
         const ui = SYNC_CONFIG.uiElements;
         ui.progressContainer.style.display = 'block';
@@ -628,11 +633,11 @@
             }, 2000);
         }
     }
-    
+
     // ============================================================
     //  FUNCIONES PRINCIPALES
     // ============================================================
-    
+
     async function startSync(localFolder, remoteFolder) {
         try {
             if (!localFolder) {
@@ -656,34 +661,34 @@
                     return;
                 }
             }
-            
+
             localStorage.setItem('syncLocalFolder', localFolder);
             localStorage.setItem('syncRemoteFolder', remoteFolder);
-            
+
             addLog(`🚀 Iniciando sincronización: ${localFolder} → ${remoteFolder}`, 'info');
             updateStatus('running', `Conectando...`);
             updateProgress(10, 'Iniciando sincronización...');
-            
+
             const response = await fetch(`${SYNC_CONFIG.serverUrl}/api/sync/start`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ localFolder, remoteFolder })
             });
-            
+
             if (!response.ok) {
                 const error = await response.json();
                 throw new Error(error.error || error.message || 'Error al iniciar');
             }
-            
+
             const data = await response.json();
             SYNC_CONFIG.isRunning = true;
-            
+
             const ui = SYNC_CONFIG.uiElements;
             ui.startBtn.style.display = 'none';
             ui.stopBtn.style.display = 'block';
             updateStatus('running', `Sincronizando: ${localFolder} → ${remoteFolder}`);
             updateProgress(100, '¡Sincronización iniciada!');
-            
+
             addLog(`✅ Sincronización iniciada correctamente`, 'success');
             addLog(`📁 Local: ${data.localFolder}`, 'info');
             addLog(`☁️ Nube: ${data.remoteFolder}`, 'info');
@@ -707,7 +712,7 @@
             ui.stopBtn.style.display = 'none';
         }
     }
-    
+
     function stopSync() {
         if (!SYNC_CONFIG.isRunning) {
             addLog('⚠️ La sincronización ya está detenida', 'warning');
@@ -730,11 +735,11 @@
                 addLog(`⚠️ Error al detener: ${err.message}`, 'warning');
             });
     }
-    
+
     // ============================================================
-    //  MANEJAR EVENTOS
+    //  MANEJAR EVENTOS DE SINCRONIZACIÓN
     // ============================================================
-    
+
     function handleSyncEvent(data) {
         const ui = SYNC_CONFIG.uiElements;
         switch (data.event) {
@@ -770,28 +775,20 @@
             ui.pendingCount.textContent = data.stats.pending || '0';
         }
     }
-    
+
     // ============================================================
     //  INICIALIZACIÓN
     // ============================================================
-    
+
     function initSync() {
         console.log('🔄 Inicializando sincronizador v6.0...');
         const checkIcons = setInterval(() => {
-            if (document.querySelector('link[href*="font-awesome"]') || 
+            if (document.querySelector('link[href*="font-awesome"]') ||
                 document.querySelector('script[src*="font-awesome"]')) {
                 clearInterval(checkIcons);
                 createSyncUI();
                 addLog('👋 ¡Bienvenido! La carpeta se creará automáticamente', 'info');
-                // Intentar conectar al servidor
-                setTimeout(() => {
-                    checkServerStatus().then(connected => {
-                        if (!connected) {
-                            addLog('ℹ️ Iniciando servidor automáticamente...', 'info');
-                            startNodeServer();
-                        }
-                    });
-                }, 2000);
+                setTimeout(checkServerStatus, 1500);
             }
         }, 100);
         setTimeout(() => {
@@ -799,23 +796,16 @@
             if (!document.getElementById('syncPanel')) {
                 createSyncUI();
                 addLog('👋 ¡Bienvenido! La carpeta se creará automáticamente', 'info');
-                setTimeout(() => {
-                    checkServerStatus().then(connected => {
-                        if (!connected) {
-                            addLog('ℹ️ Iniciando servidor automáticamente...', 'info');
-                            startNodeServer();
-                        }
-                    });
-                }, 2000);
+                setTimeout(checkServerStatus, 1500);
             }
         }, 3000);
         console.log('✅ Sincronizador v6.0 inicializado');
     }
-    
+
     // ============================================================
-    //  EXPORTAR
+    //  EXPORTAR FUNCIONES (para usar desde consola)
     // ============================================================
-    
+
     window.SyncManager = {
         init: initSync,
         start: startSync,
@@ -824,16 +814,16 @@
         addLog: addLog,
         reconnect: checkServerStatus
     };
-    
+
     // ============================================================
     //  AUTO-INICIAR
     // ============================================================
-    
+
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initSync);
     } else {
         setTimeout(initSync, 500);
     }
     console.log('📦 sync.js v6.0 cargado correctamente');
-    
+
 })();
